@@ -5,9 +5,29 @@ import { Narration } from "@/data/narrations"
 
 interface NarrationViewProps {
   narration: Narration
+  total: number
 }
 
-export default function NarrationView({ narration }: NarrationViewProps) {
+function renderText(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*)/g
+  let lastIndex = 0
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
+    const token = match[0]
+    if (token.startsWith("**")) {
+      parts.push(<strong key={match.index} style={{ color: "var(--gold)", fontWeight: 600 }}>{token.slice(2, -2)}</strong>)
+    } else {
+      parts.push(<em key={match.index}>{token.slice(1, -1)}</em>)
+    }
+    lastIndex = match.index + token.length
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : parts
+}
+
+export default function NarrationView({ narration, total }: NarrationViewProps) {
   return (
     <AnimatePresence mode="wait">
       <motion.article
@@ -86,7 +106,6 @@ export default function NarrationView({ narration }: NarrationViewProps) {
               return (
                 <blockquote
                   key={i}
-                  className="narration-quote"
                   style={{
                     borderLeftColor: "var(--gold-dark)",
                     paddingLeft: "18px",
@@ -99,7 +118,7 @@ export default function NarrationView({ narration }: NarrationViewProps) {
                     lineHeight: 1.75,
                   }}
                 >
-                  {block.text}
+                  {renderText(block.text)}
                 </blockquote>
               )
             }
@@ -113,7 +132,7 @@ export default function NarrationView({ narration }: NarrationViewProps) {
                   color: "var(--text)",
                 }}
               >
-                {block.text}
+                {renderText(block.text)}
               </p>
             )
           })}
@@ -123,7 +142,7 @@ export default function NarrationView({ narration }: NarrationViewProps) {
         <div className="mt-10 flex items-center gap-3">
           <div style={{ flex: 1, height: "1px", background: "linear-gradient(to right, var(--gold-dark), transparent)", opacity: 0.3 }} />
           <span className="font-cinzel" style={{ color: "var(--muted)", fontSize: "9px", letterSpacing: "2px" }}>
-            {narration.roman} / XV
+            {narration.roman} / {total}
           </span>
         </div>
       </motion.article>

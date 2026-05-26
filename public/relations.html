@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relations — Tengetsu Hōzuki</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --bg2: #111318;
+    --bg3: #181c22;
+    --border: rgba(255,255,255,0.07);
+    --gold: #c8a96e;
+    --gold2: #a07840;
+    --text: #e8e0d0;
+    --muted: #7a7060;
+    --purple: #7c5cbf;
+    --purple-light: #b09cdf;
+    --amber: #c87c30;
+    --amber-light: #e8a860;
+    --red: #c04040;
+    --red-light: #e87070;
+    --teal: #3a9080;
+    --teal-light: #70c0b0;
+    --blue: #3870b0;
+    --blue-light: #70a0d8;
+    --coral: #b85040;
+    --coral-light: #e08870;
+    --green: #4a8050;
+    --green-light: #80b880;
+    --pink: #a04870;
+    --pink-light: #d080a8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  header {
+    width: 100%;
+    max-width: 1100px;
+    padding: 48px 40px 24px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  header .eyebrow {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 6px;
+    color: var(--gold2);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  header h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+
+  header .sub {
+    font-style: italic;
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .divider {
+    width: 120px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold2), transparent);
+    margin: 20px auto;
+  }
+
+  .export-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--gold2);
+    background: transparent;
+    border: 1px solid var(--gold2);
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .export-btn:hover { background: rgba(200,169,110,0.1); color: var(--gold); border-color: var(--gold); }
+
+  .main {
+    width: 100%;
+    max-width: 1100px;
+    padding: 0 40px 60px;
+    display: flex;
+    gap: 40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* GRAPH */
+  .graph-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+
+  svg.graph {
+    width: 100%;
+    height: auto;
+  }
+
+  .section-label {
+    fill: var(--muted);
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 4px;
+    text-anchor: middle;
+  }
+
+  /* Node styles */
+  .node-group { cursor: pointer; transition: opacity 0.2s; }
+  .node-group:hover { opacity: 0.85; }
+  .node-group.active rect { stroke-width: 2; filter: brightness(1.2); }
+
+  .node-rect { rx: 8; stroke-width: 0.8; }
+  .node-title { font-family: 'Cinzel', serif; font-size: 11px; font-weight: 600; text-anchor: middle; }
+  .node-sub { font-family: 'Cormorant Garamond', serif; font-size: 10px; font-style: italic; text-anchor: middle; }
+
+  /* PANEL */
+  .panel {
+    width: 320px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 20px;
+    height: fit-content;
+  }
+
+  .panel-empty {
+    border: 1px solid var(--border);
+    padding: 32px 24px;
+    text-align: center;
+    font-style: italic;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .panel-card {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .panel-card.visible { display: block; }
+
+  .panel-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-tag {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .panel-name {
+    font-family: 'Cinzel', serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--gold);
+    margin-bottom: 4px;
+  }
+
+  .panel-role {
+    font-style: italic;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .panel-body {
+    padding: 20px 24px;
+    font-size: 15px;
+    line-height: 1.85;
+    color: var(--text);
+  }
+
+  .panel-body p + p { margin-top: 12px; }
+
+  .panel-body em { color: var(--gold2); font-style: italic; }
+
+  .panel-body strong { color: var(--gold); font-weight: 600; font-style: normal; }
+
+  .panel-quote {
+    border-left: 2px solid var(--gold2);
+    padding: 10px 16px;
+    margin: 16px 0;
+    font-style: italic;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Clan Hōzuki · Kiri no Kuni</div>
+  <h1>Tengetsu Hōzuki</h1>
+  <div class="sub">Cartographie des relations</div>
+  <div class="divider"></div>
+  <button class="export-btn" onclick="exportPDF()">⬇ Exporter en PDF</button>
+</header>
+
+<div class="main">
+
+  <div class="graph-wrap">
+    <svg class="graph" viewBox="0 0 620 860" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- TENGETSU -->
+      <g class="node-group" id="node-tengetsu" onclick="showPanel('tengetsu')">
+        <rect class="node-rect" x="210" y="20" width="200" height="56" fill="#1a1530" stroke="#7c5cbf"/>
+        <text class="node-title" x="310" y="42" fill="#b09cdf">Tengetsu Hōzuki</text>
+        <text class="node-sub" x="310" y="58" fill="#7c5cbf">天月 · Héritier</text>
+      </g>
+
+      <!-- SECTION FAMILLE -->
+      <text class="section-label" x="310" y="102">— FAMILLE —</text>
+
+      <!-- Onigetsu -->
+      <line x1="260" y1="76" x2="110" y2="138" stroke="#c87c30" stroke-width="0.8" stroke-dasharray="none" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-onigetsu" onclick="showPanel('onigetsu')">
+        <rect class="node-rect" x="20" y="138" width="175" height="52" fill="#1a1200" stroke="#c87c30"/>
+        <text class="node-title" x="107" y="158" fill="#e8a860">Onigetsu Hōzuki</text>
+        <text class="node-sub" x="107" y="174" fill="#a07840">Père · Admiration / Méfiance</text>
+      </g>
+
+      <!-- Umihime -->
+      <line x1="310" y1="76" x2="310" y2="128" stroke="#a04870" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-umihime" onclick="showPanel('umihime')">
+        <rect class="node-rect" x="210" y="128" width="200" height="52" fill="#1a0818" stroke="#a04870"/>
+        <text class="node-title" x="310" y="148" fill="#d080a8">Umihime Hōzuki</text>
+        <text class="node-sub" x="310" y="164" fill="#a04870">Mère de substitution · Affection / Doute</text>
+      </g>
+
+      <!-- Mizuhime -->
+      <line x1="360" y1="76" x2="510" y2="138" stroke="#3a9080" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-mizuhime" onclick="showPanel('mizuhime')">
+        <rect class="node-rect" x="425" y="138" width="175" height="52" fill="#001a14" stroke="#3a9080"/>
+        <text class="node-title" x="512" y="158" fill="#70c0b0">Mizuhime Hōzuki</text>
+        <text class="node-sub" x="512" y="174" fill="#3a9080">Sœur · Confiance absolue</text>
+      </g>
+
+      <!-- Kokigetsu -->
+      <line x1="107" y1="190" x2="107" y2="230" stroke="#3870b0" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-kokigetsu" onclick="showPanel('kokigetsu')">
+        <rect class="node-rect" x="20" y="230" width="175" height="52" fill="#001020" stroke="#3870b0"/>
+        <text class="node-title" x="107" y="250" fill="#70a0d8">Kokigetsu Hōzuki</text>
+        <text class="node-sub" x="107" y="266" fill="#3870b0">Cousin · Proche / Lointain</text>
+      </g>
+
+      <!-- Sudogetsu -->
+      <line x1="310" y1="180" x2="310" y2="230" stroke="#3870b0" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-sudogetsu" onclick="showPanel('sudogetsu')">
+        <rect class="node-rect" x="210" y="230" width="200" height="52" fill="#001020" stroke="#3870b0"/>
+        <text class="node-title" x="310" y="250" fill="#70a0d8">Sudogetsu Hōzuki</text>
+        <text class="node-sub" x="310" y="266" fill="#3870b0">Oncle · Confiance sincère</text>
+      </g>
+
+      <!-- Zengetsu -->
+      <line x1="512" y1="190" x2="512" y2="230" stroke="#c04040" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-zengetsu" onclick="showPanel('zengetsu')">
+        <rect class="node-rect" x="425" y="230" width="175" height="52" fill="#1a0000" stroke="#c04040"/>
+        <text class="node-title" x="512" y="250" fill="#e87070">Zengetsu Hōzuki</text>
+        <text class="node-sub" x="512" y="266" fill="#c04040">Cousin · Menace directe</text>
+      </g>
+
+      <!-- SECTION RIVAUX -->
+      <text class="section-label" x="310" y="316">— RIVAUX —</text>
+
+      <!-- Thorkel -->
+      <line x1="260" y1="76" x2="175" y2="330" stroke="#b85040" stroke-width="0.8" stroke-dasharray="5 3" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-thorkel" onclick="showPanel('thorkel')">
+        <rect class="node-rect" x="20" y="330" width="310" height="52" fill="#1a0800" stroke="#b85040"/>
+        <text class="node-title" x="175" y="350" fill="#e08870">Thorkel Hoshigaki</text>
+        <text class="node-sub" x="175" y="366" fill="#b85040">Fraternel conflictuel · Haine et Amour mêlés</text>
+      </g>
+
+      <!-- Gin Karatachi -->
+      <line x1="360" y1="76" x2="445" y2="330" stroke="#b85040" stroke-width="0.8" stroke-dasharray="5 3" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-gin" onclick="showPanel('gin')">
+        <rect class="node-rect" x="350" y="330" width="250" height="52" fill="#1a0800" stroke="#b85040"/>
+        <text class="node-title" x="475" y="350" fill="#e08870">Gin Karatachi</text>
+        <text class="node-sub" x="475" y="366" fill="#b85040">Amie / Ennemie jurée · Respect profond</text>
+      </g>
+
+      <!-- SECTION ALLIÉS -->
+      <text class="section-label" x="310" y="416">— ALLIÉS —</text>
+
+      <!-- Juno Seno -->
+      <line x1="270" y1="76" x2="80" y2="428" stroke="#4a8050" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-juno" onclick="showPanel('juno')">
+        <rect class="node-rect" x="20" y="428" width="155" height="52" fill="#001200" stroke="#4a8050"/>
+        <text class="node-title" x="97" y="448" fill="#80b880">Juno Seno</text>
+        <text class="node-sub" x="97" y="464" fill="#4a8050">Banerai · Précieux atout</text>
+      </g>
+
+      <!-- Kaien Seno -->
+      <line x1="290" y1="76" x2="230" y2="428" stroke="#4a8050" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-kaien" onclick="showPanel('kaien')">
+        <rect class="node-rect" x="185" y="428" width="155" height="52" fill="#001200" stroke="#4a8050"/>
+        <text class="node-title" x="262" y="448" fill="#80b880">Kaien Seno</text>
+        <text class="node-sub" x="262" y="464" fill="#4a8050">Banerai · Allié de confiance</text>
+      </g>
+
+      <!-- Ao Ren -->
+      <line x1="330" y1="76" x2="390" y2="428" stroke="#4a8050" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-aoren" onclick="showPanel('aoren')">
+        <rect class="node-rect" x="350" y="428" width="155" height="52" fill="#001200" stroke="#4a8050"/>
+        <text class="node-title" x="427" y="448" fill="#80b880">Ao Ren Yokushin</text>
+        <text class="node-sub" x="427" y="464" fill="#4a8050">Yokushin · Valeur connue</text>
+      </g>
+
+      <!-- Kurozai -->
+      <line x1="360" y1="76" x2="527" y2="428" stroke="#3a9080" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-kurozai" onclick="showPanel('kurozai')">
+        <rect class="node-rect" x="445" y="428" width="155" height="52" fill="#001a14" stroke="#3a9080"/>
+        <text class="node-title" x="522" y="448" fill="#70c0b0">Kurozai Hoshigaki</text>
+        <text class="node-sub" x="522" y="464" fill="#3a9080">Amie · Liés par l'épreuve</text>
+      </g>
+
+      <!-- Yu Karatachi -->
+      <line x1="310" y1="76" x2="310" y2="528" stroke="#3a9080" stroke-width="0.8" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-yu" onclick="showPanel('yu')">
+        <rect class="node-rect" x="210" y="528" width="200" height="52" fill="#001a14" stroke="#3a9080"/>
+        <text class="node-title" x="310" y="548" fill="#70c0b0">Yu Karatachi</text>
+        <text class="node-sub" x="310" y="564" fill="#3a9080">Ami discret · Valeur reconnue</text>
+      </g>
+
+      <!-- SECTION ENNEMIS -->
+      <text class="section-label" x="310" y="616">— ENNEMIS —</text>
+
+      <!-- Taijutsuman -->
+      <line x1="310" y1="76" x2="310" y2="628" stroke="#c04040" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-taiju" onclick="showPanel('taiju')">
+        <rect class="node-rect" x="130" y="628" width="360" height="52" fill="#1a0000" stroke="#c04040"/>
+        <text class="node-title" x="310" y="648" fill="#e87070">Taijutsuman d'Oto</text>
+        <text class="node-sub" x="310" y="664" fill="#c04040">Ennemis · La défaite qu'on n'oublie pas</text>
+      </g>
+
+      <!-- JAGETSU (livres) -->
+      <text class="section-label" x="310" y="716">— HÉRITAGE —</text>
+      <line x1="310" y1="76" x2="310" y2="728" stroke="#7c5cbf" stroke-width="0.8" stroke-dasharray="3 4" marker-end="url(#arr)"/>
+      <g class="node-group" id="node-jagetsu" onclick="showPanel('jagetsu')">
+        <rect class="node-rect" x="130" y="728" width="360" height="52" fill="#0a0820" stroke="#7c5cbf"/>
+        <text class="node-title" x="310" y="748" fill="#b09cdf">Jagetsu Hōzuki</text>
+        <text class="node-sub" x="310" y="764" fill="#7c5cbf">Ancêtre · Les deux livres · Fascination grandissante</text>
+      </g>
+
+    </svg>
+  </div>
+
+  <!-- PANEL -->
+  <div class="panel">
+    <div class="panel-empty" id="panel-empty">
+      Clique sur un nœud pour révéler la nature du lien.
+    </div>
+
+    <div class="panel-card" id="panel-tengetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#b09cdf">Sujet central</div>
+        <div class="panel-name">Tengetsu Hōzuki</div>
+        <div class="panel-role">天月 — L'Héritier</div>
+      </div>
+      <div class="panel-body">
+        <p>Fils d'Onigetsu, élevé par Umihime. L'ego comme premier bouclier, le calcul comme second réflexe. Tengetsu ne fait rien sans raison — et ne montre jamais ses raisons.</p>
+        <div class="panel-quote">« Quel imbécile révèle à ses concurrents ce qu'il convoite ? »</div>
+        <p>Il monte. Lentement pour certains. <em>Inexorablement pour ceux qui regardent vraiment.</em></p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-onigetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#e8a860">Famille</div>
+        <div class="panel-name">Onigetsu Hōzuki</div>
+        <div class="panel-role">Père · Parrain de la Cabale</div>
+      </div>
+      <div class="panel-body">
+        <p>Tengetsu ne comprend pas entièrement son père — et c'est précisément pour ça qu'il lui voue une admiration mêlée de méfiance. Onigetsu agit en profondeur, en silence, avec la patience d'un homme qui pense en décennies.</p>
+        <div class="panel-quote">« Certains pères parlent avec leur épée. Le mien aussi. »</div>
+        <p>Plus le temps passe, plus Tengetsu perçoit quelque chose dans le regard de son père — <em>la recherche d'un héritier digne.</em> Il ne sait pas encore s'il est cet héritier. Mais il y travaille.</p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-umihime">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#d080a8">Famille</div>
+        <div class="panel-name">Umihime Hōzuki</div>
+        <div class="panel-role">Mère de substitution</div>
+      </div>
+      <div class="panel-body">
+        <p>C'est elle qui l'a élevé. Elle qui a comblé les silences laissés par Onigetsu. Tengetsu éprouve pour elle une affection sincère — <em>mais pas aveugle.</em></p>
+        <p>Ses interactions avec les Karatachi, les secrets qu'il perçoit sans pouvoir les nommer — tout ça instille un doute qu'il ne peut pas chasser. Il l'observe encore. Il la jauge. La confiance absolue n'est pas encore là.</p>
+        <div class="panel-quote">« Elle cache quelque chose. Je le sens. Et je ne sais pas encore si ce quelque chose me concerne. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-mizuhime">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#70c0b0">Famille</div>
+        <div class="panel-name">Mizuhime Hōzuki</div>
+        <div class="panel-role">Sœur</div>
+      </div>
+      <div class="panel-body">
+        <p>Origine commune, sang commun. Tengetsu sait que quoi qu'il arrive — quelles que soient les fractures, les distances, les ambitions croisées — <strong>ils se battront ensemble, jamais l'un contre l'autre.</strong></p>
+        <p>Depuis l'arrivée de Zengetsu, elle semble s'être légèrement éloignée. Tengetsu le note sans le dire. La confiance reste entière. La distance, lui, est temporaire.</p>
+        <div class="panel-quote">« Ma sœur n'est pas une adversaire. Elle est une constante. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-kokigetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#70a0d8">Famille</div>
+        <div class="panel-name">Kokigetsu Hōzuki</div>
+        <div class="panel-role">Cousin · Présence dans l'ombre</div>
+      </div>
+      <div class="panel-body">
+        <p>Tengetsu l'admire — sincèrement, sans calcul. Il pense que Kokigetsu est, après lui, la personne la plus digne de porter le titre d'héritier du clan.</p>
+        <p>Mais c'est Kokigetsu qui était derrière la porte ce soir-là, quand Tengetsu s'était isolé après sa première défaite. Qui attendait, sans bruit, sans jugement. <em>Ce geste n'a pas été oublié.</em></p>
+        <div class="panel-quote">« Je me sens proche de lui. Et en même temps — loin. Comme deux eaux du même fleuve qui ne se rejoignent pas. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-sudogetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#70a0d8">Famille</div>
+        <div class="panel-name">Sudogetsu Hōzuki</div>
+        <div class="panel-role">Oncle</div>
+      </div>
+      <div class="panel-body">
+        <p>Pas de lien incassable entre eux — pas encore. Mais Tengetsu a appris à reconnaître les gens fiables, et Sudogetsu en fait partie.</p>
+        <p>Il l'a plongé dans son genjutsu sans prévenir. Une leçon brutale, directe. <em>À la façon des Hōzuki.</em> Tengetsu l'en respecte d'autant plus — on n'apprend pas dans les livres avec Sudogetsu. On apprend en tombant.</p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-zengetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#e87070">Famille · Menace</div>
+        <div class="panel-name">Zengetsu Hōzuki</div>
+        <div class="panel-role">Cousin · Fils du Mizukage</div>
+      </div>
+      <div class="panel-body">
+        <p>Sur le papier, c'est un cousin. Dans les faits, c'est <strong>la menace la plus proche.</strong></p>
+        <p>Fils du Mizukage régnant, visible, fort, naturellement imposant. Certains voient déjà en lui l'héritier du trône de Kiri. Et ces "certains" ne sont pas des imbéciles.</p>
+        <p>Tengetsu observe. Il ne dit rien. Mais chaque apparition de Zengetsu est analysée, chaque signe d'attention du clan enregistré. Pas de haine ouverte. Pas de confrontation déclarée. <em>Juste deux Hōzuki dans la même pièce, conscients de ce que l'autre représente.</em></p>
+        <div class="panel-quote">« La place que je convoite n'est pas vide. Et elle ne le sera pas sans effort. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-thorkel">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#e08870">Rival</div>
+        <div class="panel-name">Thorkel Hoshigaki</div>
+        <div class="panel-role">Fraternel conflictuel</div>
+      </div>
+      <div class="panel-body">
+        <p>Il l'aime autant qu'il déteste perdre contre lui. Cette rivalité est née avant même le premier échange — ce genre qui n'attend pas d'explication.</p>
+        <p>Ils se sont affrontés en cours de suiton. Tengetsu était meilleur. <em>Puis Thorkel a proposé un duel — et a gagné.</em> Il l'a ramené au village ensuite, et ils ont parlé d'avenir, de la place que Thorkel voulait dans le monde que Tengetsu compte bâtir.</p>
+        <div class="panel-quote">« J'ai attendri quelque chose dans sa garde. Une fissure, pas une ouverture. Ça suffit pour l'instant. »</div>
+        <p>Le goût amer reste. Il reste toujours.</p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-gin">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#e08870">Rival</div>
+        <div class="panel-name">Gin Karatachi</div>
+        <div class="panel-role">Amie et Ennemie jurée</div>
+      </div>
+      <div class="panel-body">
+        <p>Même objectif. Chemins différents. Ce qui les lie est précisément ce qui les oppose — et Tengetsu le sait.</p>
+        <p>Il reconnaît son talent. <em>Immense.</em> Ce n'est pas de l'admiration facile — c'est le constat froid d'un stratège qui sait jauger un adversaire. Et un adversaire de cette valeur-là, ça ne se méprise pas. Ça se respecte, ça s'étudie, ça se prépare.</p>
+        <div class="panel-quote">« Son talent m'effraie. Et c'est exactement pour ça qu'elle est l'adversaire qui compte le plus. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-juno">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#80b880">Allié</div>
+        <div class="panel-name">Juno Seno</div>
+        <div class="panel-role">Banerai de Tengetsu</div>
+      </div>
+      <div class="panel-body">
+        <p>Tengetsu ne choisit pas ses banerais au hasard. Juno Seno a été choisi parce qu'il est <strong>utile</strong> — au sens le plus précis du terme. Fiable, efficace, là où il faut être.</p>
+        <p>Ce n'est pas de la froideur. C'est de la confiance opérationnelle — et dans l'échelle de Tengetsu, c'est une forme de respect élevé.</p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-kaien">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#80b880">Allié</div>
+        <div class="panel-name">Kaien Seno</div>
+        <div class="panel-role">Banerai de Tengetsu</div>
+      </div>
+      <div class="panel-body">
+        <p>Choisi. Pas assigné. Tengetsu tient à cette distinction — ses banerais sont des gens qu'il a sélectionnés, pas des attributions.</p>
+        <p>Kaien Seno fait partie de ceux qu'il a présentés fièrement au clan. <em>Cela dit tout de la place qu'il lui accorde.</em></p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-aoren">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#80b880">Allié</div>
+        <div class="panel-name">Ao Ren Yokushin</div>
+        <div class="panel-role">Le Yokushin de Tengetsu</div>
+      </div>
+      <div class="panel-body">
+        <p>Tengetsu sait très bien pourquoi Ao Ren le suit. Il connaît sa valeur — et il sait aussi qu'avant lui, Ao Ren était lié à son cousin.</p>
+        <p>Ce détail n'échappe pas à Tengetsu. Il ne le dit pas. Mais il le note — et il traite ce lien avec la précaution que mérite une loyauté qui a déjà connu un autre maître.</p>
+        <div class="panel-quote">« La loyauté d'un Yokushin se lit dans ses actes, pas dans ses serments. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-kurozai">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#70c0b0">Allié</div>
+        <div class="panel-name">Kurozai Hoshigaki</div>
+        <div class="panel-role">Amie · Liés par l'épreuve</div>
+      </div>
+      <div class="panel-body">
+        <p>Ils sont entrés ensemble dans le Dojo des 7. Ils ont reçu ensemble la réponse d'Onigetsu — la marque sur elle, la liquéfaction pour lui. Ce genre d'expérience crée quelque chose.</p>
+        <p>Tengetsu l'a sauvée de la prison sanglante sans hésiter. <em>Pas de calcul. Pas de stratégie.</em> On n'abandonne pas ceux qui ont partagé une épreuve réelle.</p>
+        <div class="panel-quote">« Ceux qui comptent pour moi sont protégés. Point. »</div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-yu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#70c0b0">Allié</div>
+        <div class="panel-name">Yu Karatachi</div>
+        <div class="panel-role">Ami discret</div>
+      </div>
+      <div class="panel-body">
+        <p>Discret. Tengetsu voit ce que d'autres manquent — Yu Karatachi a une valeur réelle, précisément parce qu'elle ne se montre pas à tout le monde.</p>
+        <p>C'est le genre d'ami que Tengetsu préfère : <em>ceux dont la profondeur se révèle progressivement, pas ceux qui s'imposent immédiatement.</em></p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-taiju">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#e87070">Ennemi</div>
+        <div class="panel-name">Taijutsuman d'Oto</div>
+        <div class="panel-role">La première défaite</div>
+      </div>
+      <div class="panel-body">
+        <p>Ils ont causé la première défaite de Tengetsu — lors de la mission à la frontière d'Oto pour libérer un Yokushin. Le Taijutsu pur, sans chakra élaboré, sans genjutsu. Juste le corps. Et ce jour-là, le corps de Tengetsu n'a pas suffi.</p>
+        <p>Ce qui les rend "ennemis" au sens profond, ce n'est pas la violence de l'accroc. C'est ce qu'ils ont <strong>révélé</strong> — une faille réelle, une limite.</p>
+        <div class="panel-quote">« Ils ne sont pas une menace permanente. Ils sont une dette ouverte. »</div>
+        <p>Tengetsu retournera au même endroit. Avec une réponse différente. <em>Debout jusqu'au bout.</em></p>
+      </div>
+    </div>
+
+    <div class="panel-card" id="panel-jagetsu">
+      <div class="panel-header">
+        <div class="panel-tag" style="color:#b09cdf">Héritage</div>
+        <div class="panel-name">Jagetsu Hōzuki</div>
+        <div class="panel-role">Ancêtre · Les deux Livres du Genjutsu</div>
+      </div>
+      <div class="panel-body">
+        <p>Il cherchait des questions pour le test de l'académie. Il a trouvé deux livres portant le nom de son ancêtre sur un rayon de bibliothèque — et ne les a plus vraiment reposés depuis.</p>
+        <div class="panel-quote">« L'illusion ne ment pas. Elle gouverne la perception. »</div>
+        <p>Lire Jagetsu, c'est entendre quelqu'un penser d'une façon qui <em>ressemble</em> à la sienne — mais plus loin, plus profond, plus net. Pas encore à sa portée.</p>
+        <p>Il y retourne souvent. <strong>Pas pour terminer les livres. Pour les comprendre.</strong> Il y a une différence. Jagetsu, il en est convaincu, l'aurait approuvée.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showPanel(id) {
+  document.getElementById('panel-empty').style.display = 'none';
+  document.querySelectorAll('.panel-card').forEach(c => c.classList.remove('visible'));
+  document.querySelectorAll('.node-group').forEach(n => n.classList.remove('active'));
+  const card = document.getElementById('panel-' + id);
+  const node = document.getElementById('node-' + id);
+  if (card) card.classList.add('visible');
+  if (node) node.classList.add('active');
+}
+
+function exportPDF() {
+  window.print();
+}
+</script>
+
+<style media="print">
+  body { background: white; color: black; }
+  .export-btn { display: none; }
+  .main { flex-direction: column; }
+  .panel { width: 100%; position: static; }
+  .panel-card { display: block !important; border: 1px solid #ccc; margin-bottom: 16px; }
+  .panel-empty { display: none; }
+  .panel-name { color: #333; }
+  .panel-tag { color: #666; }
+  .panel-role { color: #555; }
+  .panel-body { color: #222; }
+  .panel-quote { border-color: #999; color: #555; }
+</style>
+
+</body>
+</html>
