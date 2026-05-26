@@ -143,27 +143,29 @@ export default function Home() {
                   : "Trois mécanismes verrouillent la boîte."}
               </div>
 
-              {/* Mechanisms grid */}
+              {/* Mechanisms — vertical scroll, one per card */}
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-                  gap: "28px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "32px",
                   width: "100%",
-                  maxWidth: "800px",
-                  padding: "0 24px",
+                  maxWidth: "520px",
+                  padding: "0 20px",
                 }}
               >
                 {/* Mechanism 1 */}
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 24 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                   style={{
+                    width: "100%",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    padding: "28px 20px",
+                    padding: "36px 24px",
                     border: `1px solid ${solved[0] ? "rgba(200,169,110,0.4)" : "rgba(255,255,255,0.07)"}`,
                     background: solved[0] ? "rgba(200,169,110,0.03)" : "rgba(15,18,24,0.6)",
                     transition: "border-color 0.5s, background 0.5s",
@@ -174,14 +176,15 @@ export default function Home() {
 
                 {/* Mechanism 2 */}
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 24 }}
                   animate={{ opacity: solved[0] ? 1 : 0.35, y: 0 }}
                   transition={{ delay: 0.2 }}
                   style={{
+                    width: "100%",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    padding: "28px 20px",
+                    padding: "36px 24px",
                     border: `1px solid ${solved[1] ? "rgba(200,169,110,0.4)" : solved[0] ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)"}`,
                     background: solved[1] ? "rgba(200,169,110,0.03)" : "rgba(15,18,24,0.6)",
                     transition: "border-color 0.5s, background 0.5s, opacity 0.4s",
@@ -190,21 +193,12 @@ export default function Home() {
                   }}
                 >
                   {!solved[0] && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "rgba(5,7,9,0.5)",
-                        zIndex: 2,
-                      }}
-                    >
-                      <span
-                        className="font-cinzel"
-                        style={{ color: "var(--muted)", fontSize: "9px", letterSpacing: "3px" }}
-                      >
+                    <div style={{
+                      position: "absolute", inset: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(5,7,9,0.55)", zIndex: 2,
+                    }}>
+                      <span className="font-cinzel" style={{ color: "var(--muted)", fontSize: "9px", letterSpacing: "3px" }}>
                         VERROUILLÉ
                       </span>
                     </div>
@@ -214,14 +208,15 @@ export default function Home() {
 
                 {/* Mechanism 3 */}
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 24 }}
                   animate={{ opacity: solved[1] ? 1 : 0.35, y: 0 }}
                   transition={{ delay: 0.3 }}
                   style={{
+                    width: "100%",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    padding: "28px 20px",
+                    padding: "36px 24px",
                     border: `1px solid ${solved[2] ? "rgba(200,169,110,0.4)" : solved[1] ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)"}`,
                     background: solved[2] ? "rgba(200,169,110,0.03)" : "rgba(15,18,24,0.6)",
                     transition: "border-color 0.5s, background 0.5s, opacity 0.4s",
@@ -230,21 +225,12 @@ export default function Home() {
                   }}
                 >
                   {!solved[1] && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "rgba(5,7,9,0.5)",
-                        zIndex: 2,
-                      }}
-                    >
-                      <span
-                        className="font-cinzel"
-                        style={{ color: "var(--muted)", fontSize: "9px", letterSpacing: "3px" }}
-                      >
+                    <div style={{
+                      position: "absolute", inset: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(5,7,9,0.55)", zIndex: 2,
+                    }}>
+                      <span className="font-cinzel" style={{ color: "var(--muted)", fontSize: "9px", letterSpacing: "3px" }}>
                         VERROUILLÉ
                       </span>
                     </div>
