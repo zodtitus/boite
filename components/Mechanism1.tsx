@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { computeTick, isAligned, PERIODS, TOLERANCE, WARNING, type WaveTick } from "@/lib/alignmentDetector"
+import { computeTick, isAligned, PERIODS, WARNING, type WaveTick } from "@/lib/alignmentDetector"
 import { useAudio } from "@/lib/useAudio"
 
 const REQUIRED = 2
@@ -19,43 +19,69 @@ function WaveBar({ value, period, index, aligned, imminent, solved }: {
   value: number; period: number; index: number
   aligned: boolean; imminent: boolean; solved: boolean
 }) {
-  const col   = BAR_COLORS[index]
-  const norm  = (value + 1) / 2
-  const barH  = 100
+  const col  = BAR_COLORS[index]
+  const norm = (value + 1) / 2                 // 0..1
+  const barH = 100
   const fillH = Math.round(norm * barH)
-  const color = solved ? "var(--gold)" : aligned ? col.active : imminent ? col.active : col.idle
-  const glow  = solved
+
+  const isHigh = value >= 0.35
+  const color  = solved   ? "var(--gold)"
+    : isHigh && aligned   ? col.active
+    : isHigh && imminent  ? col.active
+    : isHigh              ? col.active
+    :                       col.idle
+  const glow = solved
     ? "0 0 14px rgba(200,169,110,0.7)"
-    : aligned ? `0 0 12px ${col.glow}`
-    : imminent ? `0 0 6px ${col.glow}`
+    : isHigh
+    ? `0 0 ${aligned ? 14 : imminent ? 10 : 6}px ${col.glow}`
     : "none"
+
   const labels = ["α", "β", "γ"] as const
-  const periodLabel = period < 5000 ? "4s" : period < 7000 ? "6s" : "9s"
+  const periodLabel = period < 3500 ? "3s" : period < 5000 ? "4s" : "6s"
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
-      <span style={{ fontFamily: "serif", fontSize: "16px", color, transition: "color 0.3s",
-        textShadow: glow !== "none" ? `0 0 6px ${col.glow}` : "none" }}>
+      <span style={{
+        fontFamily: "serif", fontSize: "16px",
+        color, transition: "color 0.3s",
+        textShadow: glow !== "none" ? `0 0 6px ${col.glow}` : "none",
+      }}>
         {labels[index]}
       </span>
+
       <div style={{
-        width: "22px", height: `${barH}px`, background: "rgba(255,255,255,0.04)",
-        border: `1px solid ${color}44`, borderRadius: "3px", position: "relative",
-        overflow: "hidden", transition: "border-color 0.3s", boxShadow: glow,
+        width: "22px", height: `${barH}px`,
+        background: "rgba(255,255,255,0.04)",
+        border: `1px solid ${color}44`, borderRadius: "3px",
+        position: "relative", overflow: "hidden",
+        transition: "border-color 0.3s", boxShadow: glow,
       }}>
+        {/* Threshold line */}
         <div style={{
-          position: "absolute", left: 0, right: 0, bottom: 0, height: `${fillH}px`,
+          position: "absolute", left: 0, right: 0,
+          top: `${barH - Math.round(0.675 * barH)}px`,
+          height: "1px", background: "rgba(200,169,110,0.25)", zIndex: 2,
+        }} />
+        {/* Fill */}
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          height: `${fillH}px`,
           background: `linear-gradient(to top, ${color}cc, ${color}44)`,
           borderRadius: "0 0 2px 2px",
         }} />
+        {/* Peak line */}
         <div style={{
           position: "absolute", left: 0, right: 0,
           top: `${barH - fillH}px`, height: "1px",
           background: color, boxShadow: `0 0 3px ${color}`,
         }} />
       </div>
-      <span style={{ fontFamily: "var(--font-cinzel-var), 'Cinzel', serif",
-        fontSize: "8px", letterSpacing: "1px", color: "var(--muted)", textTransform: "uppercase" }}>
+
+      <span style={{
+        fontFamily: "var(--font-cinzel-var), 'Cinzel', serif",
+        fontSize: "8px", letterSpacing: "1px",
+        color: "var(--muted)", textTransform: "uppercase",
+      }}>
         {periodLabel}
       </span>
     </div>
@@ -67,22 +93,27 @@ function ShinobiSVG({ aligned, imminent, solved, failed }: {
   aligned: boolean; imminent: boolean; solved: boolean; failed: boolean
 }) {
   const id = useId().replace(/:/g, "")
-  const turbFreq  = solved ? 0 : failed ? 0.18 : aligned ? 0 : imminent ? 0.03 : 0.06
-  const turbScale = solved ? 0 : failed ? 20 : aligned ? 0 : imminent ? 4 : 8
-  const bodyColor = solved ? "var(--gold)" : aligned ? "#4a90c0" : imminent ? "#8060d0" : failed ? "#c04040" : "var(--muted)"
-  const glowC     = solved ? "rgba(200,169,110,0.8)" : aligned ? "rgba(74,144,192,0.7)"
-    : imminent ? "rgba(128,96,208,0.5)" : failed ? "rgba(192,64,64,0.8)" : "rgba(106,96,80,0.2)"
+  const turbFreq  = solved ? 0 : failed ? 0.18 : aligned ? 0 : imminent ? 0.025 : 0.06
+  const turbScale = solved ? 0 : failed ? 22 : aligned ? 0 : imminent ? 5 : 9
+  const bodyColor = solved ? "var(--gold)" : aligned ? "#4a90c0" : imminent ? "#8060d0"
+    : failed ? "#c04040" : "var(--muted)"
+  const glowC = solved ? "rgba(200,169,110,0.8)"
+    : aligned ? "rgba(74,144,192,0.7)"
+    : imminent ? "rgba(128,96,208,0.6)"
+    : failed ? "rgba(192,64,64,0.8)"
+    : "rgba(106,96,80,0.2)"
 
   return (
     <div style={{
-      filter: `drop-shadow(0 0 ${aligned || solved ? 14 : imminent ? 8 : failed ? 10 : 3}px ${glowC})`,
+      filter: `drop-shadow(0 0 ${aligned || solved ? 16 : imminent ? 10 : failed ? 12 : 3}px ${glowC})`,
       transition: "filter 0.3s",
     }}>
       <svg viewBox="0 0 120 160" width="88" height="118" style={{ overflow: "visible" }}>
         <defs>
           <filter id={id} x="-30%" y="-30%" width="160%" height="160%">
             <feTurbulence type="turbulence" baseFrequency={turbFreq} numOctaves="3" seed="7" result="t" />
-            <feDisplacementMap in="SourceGraphic" in2="t" scale={turbScale} xChannelSelector="R" yChannelSelector="G" />
+            <feDisplacementMap in="SourceGraphic" in2="t" scale={turbScale}
+              xChannelSelector="R" yChannelSelector="G" />
           </filter>
         </defs>
         <g filter={`url(#${id})`} fill={bodyColor}>
@@ -100,7 +131,8 @@ function ShinobiSVG({ aligned, imminent, solved, failed }: {
           <rect x="46" y="14" width="28" height="6" rx="2" opacity="0.6"
             fill={solved ? "var(--gold-dark)" : imminent ? "#6040a0" : "#2a3a5a"} />
           {solved && (
-            <text x="60" y="22" textAnchor="middle" fontSize="8" fill="var(--bg)" opacity="0.9" fontFamily="serif">天</text>
+            <text x="60" y="22" textAnchor="middle" fontSize="8"
+              fill="var(--bg)" opacity="0.9" fontFamily="serif">天</text>
           )}
         </g>
       </svg>
@@ -112,17 +144,17 @@ function ShinobiSVG({ aligned, imminent, solved, failed }: {
 interface Props { onSolved: () => void; disabled: boolean }
 
 export default function Mechanism1({ onSolved, disabled }: Props) {
-  const { play, resume }  = useAudio()
-  const startRef          = useRef<number>(Date.now())
-  const rafRef            = useRef<number>(0)
-  const warnedRef         = useRef(false)
+  const { play, resume } = useAudio()
+  const startRef  = useRef<number>(Date.now())
+  const rafRef    = useRef<number>(0)
+  const warnedRef = useRef(false)
 
-  const [tick, setTick]         = useState<WaveTick>(() => computeTick(startRef.current))
-  const [hits, setHits]         = useState(0)
-  const [fails, setFails]       = useState(0)
-  const [solved, setSolved]     = useState(false)
+  const [tick, setTick]           = useState<WaveTick>(() => computeTick(startRef.current))
+  const [hits, setHits]           = useState(0)
+  const [fails, setFails]         = useState(0)
+  const [solved, setSolved]       = useState(false)
   const [failFlash, setFailFlash] = useState(false)
-  const [burstKey, setBurstKey] = useState(0)
+  const [burstKey, setBurstKey]   = useState(0)
 
   // RAF loop
   useEffect(() => {
@@ -130,8 +162,12 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
     function frame() {
       const t = computeTick(startRef.current)
       setTick(t)
-      if (t.imminent && !warnedRef.current) { play("warning"); warnedRef.current = true }
-      if (!t.imminent) warnedRef.current = false
+      // Fire warning sound once per approach
+      if (t.imminent && !warnedRef.current) {
+        play("warning")
+        warnedRef.current = true
+      }
+      if (!t.imminent && !t.aligned) warnedRef.current = false
       rafRef.current = requestAnimationFrame(frame)
     }
     rafRef.current = requestAnimationFrame(frame)
@@ -142,7 +178,7 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
     if (solved || disabled) return
     resume()
     const elapsed = Date.now() - startRef.current
-    if (isAligned(elapsed, TOLERANCE)) {
+    if (isAligned(elapsed)) {
       play("align")
       setBurstKey(k => k + 1)
       setHits(h => {
@@ -166,34 +202,35 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
     }
   }, [solved, disabled, play, resume, onSolved])
 
-  // ── UI states
-  const isImminent = tick.imminent && !solved
-  const isAlignedNow = tick.aligned && !solved
-  const timerPct = isAlignedNow ? 100 : isImminent ? Math.round((1 - tick.msUntilNext / WARNING) * 100) : 0
+  const isImminent   = tick.imminent && !solved
+  const isAlignedNow = tick.aligned  && !solved
 
-  let statusMsg = "Observe les vagues — frappe quand les trois s'alignent"
-  if (solved) statusMsg = "Synchronisation parfaite. La voie est ouverte."
-  else if (failFlash) statusMsg = "Hors rythme."
+  let statusMsg = "Attends que les trois barres montent — frappe quand elles brillent"
+  if (solved)          statusMsg = "Synchronisation parfaite. La voie est ouverte."
+  else if (failFlash)  statusMsg = "Hors rythme."
   else if (isAlignedNow) statusMsg = "MAINTENANT !"
   else if (isImminent) statusMsg = "Prépare-toi…"
-  else if (hits > 0) statusMsg = `${hits} / ${REQUIRED} synchronisations`
+  else if (hits > 0)   statusMsg = `${hits} / ${REQUIRED} synchronisations`
 
-  const btnBorder = solved ? "var(--gold)"
-    : failFlash ? "#c04040"
+  const btnBorder = solved       ? "var(--gold)"
+    : failFlash    ? "#c04040"
     : isAlignedNow ? "var(--gold)"
-    : isImminent ? "#8060d0"
+    : isImminent   ? "#8060d0"
     : "rgba(200,169,110,0.2)"
-  const btnGlow = solved ? "0 0 24px rgba(200,169,110,0.6)"
-    : failFlash ? "0 0 16px rgba(192,64,64,0.6)"
-    : isAlignedNow ? "0 0 22px rgba(200,169,110,0.7)"
-    : isImminent ? "0 0 14px rgba(128,96,208,0.5)"
+  const btnGlow = solved         ? "0 0 24px rgba(200,169,110,0.6)"
+    : failFlash    ? "0 0 16px rgba(192,64,64,0.6)"
+    : isAlignedNow ? "0 0 28px rgba(200,169,110,0.8)"
+    : isImminent   ? "0 0 18px rgba(128,96,208,0.6)"
     : "none"
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "18px", width: "100%" }}>
 
       {/* Label */}
-      <p className="font-cinzel" style={{ color: "var(--gold-dark)", fontSize: "9px", letterSpacing: "4px", textTransform: "uppercase" }}>
+      <p className="font-cinzel" style={{
+        color: "var(--gold-dark)", fontSize: "9px",
+        letterSpacing: "4px", textTransform: "uppercase",
+      }}>
         La Patience du Sang · 同調
       </p>
 
@@ -219,27 +256,28 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
         ))}
       </div>
 
-      {/* Arena */}
+      {/* Arena: bars + shinobi + button */}
       <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-        {/* Left bars */}
+
+        {/* Left bars (α, β) */}
         <div style={{ display: "flex", gap: "10px" }}>
-          {PERIODS.slice(0, 2).map((p, i) => (
-            <WaveBar key={p} value={tick.values[i]} period={p} index={i}
+          {([0, 1] as const).map(i => (
+            <WaveBar key={i} value={tick.values[i]} period={PERIODS[i]} index={i}
               aligned={isAlignedNow} imminent={isImminent} solved={solved} />
           ))}
         </div>
 
-        {/* Centre: shinobi + button */}
+        {/* Centre */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
           <ShinobiSVG aligned={isAlignedNow} imminent={isImminent} solved={solved} failed={failFlash} />
 
+          {/* Button */}
           <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <AnimatePresence>
               {burstKey > 0 && (
-                <motion.div key={burstKey} style={{
-                  position: "absolute", width: "120px", height: "120px",
-                  borderRadius: "50%", border: "2px solid var(--gold)",
-                }}
+                <motion.div key={burstKey}
+                  style={{ position: "absolute", width: "120px", height: "120px",
+                    borderRadius: "50%", border: "2px solid var(--gold)" }}
                   initial={{ opacity: 1, scale: 0.5 }}
                   animate={{ opacity: 0, scale: 2.0 }}
                   exit={{ opacity: 0 }}
@@ -248,51 +286,69 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
               )}
             </AnimatePresence>
 
-            <button
-              onClick={handleClick}
-              disabled={solved || disabled}
-              style={{
-                width: "72px", height: "72px", borderRadius: "50%",
-                border: `2px solid ${btnBorder}`,
-                background: solved ? "rgba(200,169,110,0.08)" : "rgba(15,18,24,0.8)",
-                boxShadow: btnGlow,
-                cursor: (solved || disabled) ? "default" : "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center",
-                justifyContent: "center", gap: "3px", outline: "none",
-                transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
-              }}
-            >
-              <span style={{ fontFamily: "serif", fontSize: "20px", color: "var(--gold)", pointerEvents: "none",
-                textShadow: "0 0 6px rgba(200,169,110,0.4)" }}>刻</span>
-              <span style={{ fontFamily: "var(--font-cinzel-var), 'Cinzel', serif", fontSize: "7px",
-                letterSpacing: "2px", color: "var(--muted)", textTransform: "uppercase", pointerEvents: "none" }}>
+            <button onClick={handleClick} disabled={solved || disabled} style={{
+              width: "72px", height: "72px", borderRadius: "50%",
+              border: `2px solid ${btnBorder}`,
+              background: solved ? "rgba(200,169,110,0.08)" : "rgba(15,18,24,0.8)",
+              boxShadow: btnGlow,
+              cursor: (solved || disabled) ? "default" : "pointer",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: "3px",
+              outline: "none",
+              transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
+            }}>
+              <span style={{ fontFamily: "serif", fontSize: "20px", color: "var(--gold)",
+                pointerEvents: "none", textShadow: "0 0 6px rgba(200,169,110,0.4)" }}>刻</span>
+              <span style={{
+                fontFamily: "var(--font-cinzel-var), 'Cinzel', serif",
+                fontSize: "7px", letterSpacing: "2px", color: "var(--muted)",
+                textTransform: "uppercase", pointerEvents: "none",
+              }}>
                 {solved ? "Résolu" : "Frappe"}
               </span>
             </button>
           </div>
         </div>
 
-        {/* Right bar */}
+        {/* Right bar (γ) */}
         <WaveBar value={tick.values[2]} period={PERIODS[2]} index={2}
           aligned={isAlignedNow} imminent={isImminent} solved={solved} />
       </div>
 
-      {/* Timer bar */}
-      <div style={{ width: "160px", height: "2px", background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden" }}>
-        <div style={{
-          height: "100%", width: `${timerPct}%`,
-          background: isAlignedNow ? "var(--gold)" : isImminent ? "#8060d0" : "var(--gold-dark)",
-          borderRadius: "2px", transition: "width 0.08s linear, background 0.3s",
-        }} />
+      {/* Imminence bar */}
+      <div style={{
+        width: "160px", height: "3px",
+        background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden",
+      }}>
+        <motion.div style={{
+          height: "100%", borderRadius: "2px",
+          background: isAlignedNow ? "var(--gold)" : "#8060d0",
+        }}
+          animate={{ width: `${Math.round(tick.windowPct * 100)}%` }}
+          transition={{ duration: 0.1 }}
+        />
       </div>
 
       {/* Status */}
       <p className="font-cormorant" style={{
-        color: solved ? "var(--gold)" : failFlash ? "#c04040" : isAlignedNow ? "var(--gold)" : isImminent ? "#9070d0" : "var(--muted)",
-        fontSize: "13px", fontStyle: "italic", textAlign: "center", minHeight: "20px",
+        color: solved        ? "var(--gold)"
+          : failFlash        ? "#c04040"
+          : isAlignedNow     ? "var(--gold)"
+          : isImminent       ? "#9070d0"
+          : "var(--muted)",
+        fontSize: "13px", fontStyle: "italic",
+        textAlign: "center", minHeight: "20px",
         transition: "color 0.3s",
       }}>
         {statusMsg}
+      </p>
+
+      {/* Subtle hint */}
+      <p className="font-cinzel" style={{
+        fontSize: "8px", letterSpacing: "2px",
+        color: "var(--muted)", opacity: 0.4, textTransform: "uppercase",
+      }}>
+        frappe quand les trois barres dépassent le trait doré
       </p>
     </div>
   )
