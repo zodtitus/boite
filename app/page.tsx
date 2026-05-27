@@ -62,7 +62,7 @@ export default function Home() {
         // Bass bins 0-3 (≈0–260 Hz) → kick drum territory
         const energy = (data[0] + data[1] + data[2] + data[3]) / 4
 
-        const isHit = energy > 55 && energy > prevEnergy + 18 && cooldown <= 0
+        const isHit = energy > 65 && energy > prevEnergy + 25 && cooldown <= 0
         if (isHit) {
           // Pick a type different from the last one
           let t: number
@@ -72,7 +72,7 @@ export default function Home() {
           lightningKeyRef.current++
           setLightning({ type: t as LightningType, key: lightningKeyRef.current })
 
-          cooldown = 22  // ~366 ms minimum gap between flashes at 60 fps
+          cooldown = 38  // ~633 ms minimum gap — one flash per beat, not per sub-hit
         }
 
         // Smooth the energy to catch transients, not sustained tones
@@ -92,7 +92,7 @@ export default function Home() {
         const src = audioCtx.createMediaElementSource(audio)
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 512
-        analyser.smoothingTimeConstant = 0.25
+        analyser.smoothingTimeConstant = 0.3
         src.connect(analyser)
         analyser.connect(audioCtx.destination)
         startBeatLoop(analyser)
