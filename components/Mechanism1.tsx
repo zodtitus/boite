@@ -1,187 +1,298 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback, useId } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { computeTick, isAligned, PERIODS, TOLERANCE, WARNING, type WaveTick } from "@/lib/alignmentDetector"
+import { useAudio } from "@/lib/useAudio"
 
-const TARGETS = [0, 270, 90, 180]
-const SIZE = 220
+const REQUIRED = 3
+const MAX_FAIL = 5
 
-const QUAD_PATHS = [
-  "M 40 40 L 40 10 M 40 25 L 15 40 M 15 40 L 8 55",
-  "M 10 40 L 10 10 M 10 25 L 35 40 M 35 40 L 42 55",
-  "M 40 10 Q 20 30 10 55 M 25 30 L 15 50",
-  "M 10 10 Q 30 30 40 55 M 25 30 L 35 50",
-]
+// ── Wave bar ─────────────────────────────────────────────────────────────────
+const BAR_COLORS = [
+  { idle: "#1a4a6a", active: "#4a90c0", glow: "rgba(74,144,192,0.7)" },
+  { idle: "#6a1a1a", active: "#c04040", glow: "rgba(192,64,64,0.7)"  },
+  { idle: "#3a2a6a", active: "#8060d0", glow: "rgba(128,96,208,0.7)" },
+] as const
 
-const quadPositions = [
-  { x: 0, y: 0 },
-  { x: 1, y: 0 },
-  { x: 0, y: 1 },
-  { x: 1, y: 1 },
-]
-
-interface Mechanism1Props {
-  onSolved: () => void
-  disabled: boolean
-}
-
-export default function Mechanism1({ onSolved, disabled }: Mechanism1Props) {
-  const [rotations, setRotations] = useState([0, 0, 0, 0])
-  const [solved, setSolved] = useState(false)
-  const [justSolved, setJustSolved] = useState(false)
-
-  useEffect(() => {
-    const isSolved = rotations.every((r, i) => r === TARGETS[i])
-    if (isSolved && !solved) {
-      setSolved(true)
-      setJustSolved(true)
-      setTimeout(() => setJustSolved(false), 800)
-      setTimeout(() => onSolved(), 600)
-    }
-  }, [rotations, solved, onSolved])
-
-  function rotate(idx: number) {
-    if (disabled || solved) return
-    setRotations((prev) => {
-      const next = [...prev]
-      next[idx] = (next[idx] + 90) % 360
-      return next
-    })
-  }
-
-  const goldColor = "#c8a96e"
-  const waterBlue = "#2a6090"
-  // Scaled from 160→220: factor 1.375
-  const half = SIZE / 2      // 110
-  const pad = 6              // edge padding (was 4)
-  const btnSize = 102        // quadrant button size (was 74)
-  const gap = half           // second column/row offset = 110 (was 82)
+function WaveBar({ value, period, index, aligned, imminent, solved }: {
+  value: number; period: number; index: number
+  aligned: boolean; imminent: boolean; solved: boolean
+}) {
+  const col   = BAR_COLORS[index]
+  const norm  = (value + 1) / 2
+  const barH  = 100
+  const fillH = Math.round(norm * barH)
+  const color = solved ? "var(--gold)" : aligned ? col.active : imminent ? col.active : col.idle
+  const glow  = solved
+    ? "0 0 14px rgba(200,169,110,0.7)"
+    : aligned ? `0 0 12px ${col.glow}`
+    : imminent ? `0 0 6px ${col.glow}`
+    : "none"
+  const labels = ["α", "β", "γ"] as const
+  const periodLabel = period < 5000 ? "4s" : period < 7000 ? "6s" : "9s"
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p
-        className="font-cinzel text-center"
-        style={{ color: "var(--gold-dark)", fontSize: "9px", letterSpacing: "4px", textTransform: "uppercase" }}
-      >
-        Sceau de l&apos;Eau
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+      <span style={{ fontFamily: "serif", fontSize: "16px", color, transition: "color 0.3s",
+        textShadow: glow !== "none" ? `0 0 6px ${col.glow}` : "none" }}>
+        {labels[index]}
+      </span>
+      <div style={{
+        width: "22px", height: `${barH}px`, background: "rgba(255,255,255,0.04)",
+        border: `1px solid ${color}44`, borderRadius: "3px", position: "relative",
+        overflow: "hidden", transition: "border-color 0.3s", boxShadow: glow,
+      }}>
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: 0, height: `${fillH}px`,
+          background: `linear-gradient(to top, ${color}cc, ${color}44)`,
+          borderRadius: "0 0 2px 2px",
+        }} />
+        <div style={{
+          position: "absolute", left: 0, right: 0,
+          top: `${barH - fillH}px`, height: "1px",
+          background: color, boxShadow: `0 0 3px ${color}`,
+        }} />
+      </div>
+      <span style={{ fontFamily: "var(--font-cinzel-var), 'Cinzel', serif",
+        fontSize: "8px", letterSpacing: "1px", color: "var(--muted)", textTransform: "uppercase" }}>
+        {periodLabel}
+      </span>
+    </div>
+  )
+}
+
+// ── Shinobi silhouette ────────────────────────────────────────────────────────
+function ShinobiSVG({ aligned, imminent, solved, failed }: {
+  aligned: boolean; imminent: boolean; solved: boolean; failed: boolean
+}) {
+  const id = useId().replace(/:/g, "")
+  const turbFreq  = solved ? 0 : failed ? 0.18 : aligned ? 0 : imminent ? 0.03 : 0.06
+  const turbScale = solved ? 0 : failed ? 20 : aligned ? 0 : imminent ? 4 : 8
+  const bodyColor = solved ? "var(--gold)" : aligned ? "#4a90c0" : imminent ? "#8060d0" : failed ? "#c04040" : "var(--muted)"
+  const glowC     = solved ? "rgba(200,169,110,0.8)" : aligned ? "rgba(74,144,192,0.7)"
+    : imminent ? "rgba(128,96,208,0.5)" : failed ? "rgba(192,64,64,0.8)" : "rgba(106,96,80,0.2)"
+
+  return (
+    <div style={{
+      filter: `drop-shadow(0 0 ${aligned || solved ? 14 : imminent ? 8 : failed ? 10 : 3}px ${glowC})`,
+      transition: "filter 0.3s",
+    }}>
+      <svg viewBox="0 0 120 160" width="88" height="118" style={{ overflow: "visible" }}>
+        <defs>
+          <filter id={id} x="-30%" y="-30%" width="160%" height="160%">
+            <feTurbulence type="turbulence" baseFrequency={turbFreq} numOctaves="3" seed="7" result="t" />
+            <feDisplacementMap in="SourceGraphic" in2="t" scale={turbScale} xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+        </defs>
+        <g filter={`url(#${id})`} fill={bodyColor}>
+          <ellipse cx="60" cy="24" rx="14" ry="16" opacity="0.9" />
+          <rect x="54" y="36" width="12" height="8" rx="2" opacity="0.8" />
+          <path d="M36 44 L84 44 L90 80 L72 82 L72 100 L48 100 L48 82 L30 80 Z" opacity="0.85" />
+          <path d="M36 48 L14 36 L10 42 L32 56 Z" opacity="0.8" />
+          <ellipse cx="11" cy="39" rx="7" ry="5" opacity="0.75" />
+          <path d="M84 48 L106 68 L102 74 L80 54 Z" opacity="0.8" />
+          <ellipse cx="104" cy="71" rx="7" ry="5" opacity="0.75" />
+          <path d="M48 98 L42 130 L52 132 L56 100 Z" opacity="0.8" />
+          <ellipse cx="47" cy="132" rx="10" ry="5" opacity="0.75" />
+          <path d="M72 98 L78 130 L68 132 L64 100 Z" opacity="0.8" />
+          <ellipse cx="73" cy="132" rx="10" ry="5" opacity="0.75" />
+          <rect x="46" y="14" width="28" height="6" rx="2" opacity="0.6"
+            fill={solved ? "var(--gold-dark)" : imminent ? "#6040a0" : "#2a3a5a"} />
+          {solved && (
+            <text x="60" y="22" textAnchor="middle" fontSize="8" fill="var(--bg)" opacity="0.9" fontFamily="serif">天</text>
+          )}
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+interface Props { onSolved: () => void; disabled: boolean }
+
+export default function Mechanism1({ onSolved, disabled }: Props) {
+  const { play, resume }  = useAudio()
+  const startRef          = useRef<number>(Date.now())
+  const rafRef            = useRef<number>(0)
+  const warnedRef         = useRef(false)
+
+  const [tick, setTick]         = useState<WaveTick>(() => computeTick(startRef.current))
+  const [hits, setHits]         = useState(0)
+  const [fails, setFails]       = useState(0)
+  const [solved, setSolved]     = useState(false)
+  const [failFlash, setFailFlash] = useState(false)
+  const [burstKey, setBurstKey] = useState(0)
+
+  // RAF loop
+  useEffect(() => {
+    if (disabled) return
+    function frame() {
+      const t = computeTick(startRef.current)
+      setTick(t)
+      if (t.imminent && !warnedRef.current) { play("warning"); warnedRef.current = true }
+      if (!t.imminent) warnedRef.current = false
+      rafRef.current = requestAnimationFrame(frame)
+    }
+    rafRef.current = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [disabled, play])
+
+  const handleClick = useCallback(() => {
+    if (solved || disabled) return
+    resume()
+    const elapsed = Date.now() - startRef.current
+    if (isAligned(elapsed, TOLERANCE)) {
+      play("align")
+      setBurstKey(k => k + 1)
+      setHits(h => {
+        const next = h + 1
+        if (next >= REQUIRED) {
+          play("success")
+          setSolved(true)
+          setTimeout(() => onSolved(), 1000)
+        }
+        return next
+      })
+    } else {
+      play("fail")
+      setFailFlash(true)
+      setTimeout(() => setFailFlash(false), 450)
+      setFails(f => {
+        const next = f + 1
+        if (next >= MAX_FAIL) setTimeout(() => { setHits(0); setFails(0) }, 700)
+        return next
+      })
+    }
+  }, [solved, disabled, play, resume, onSolved])
+
+  // ── UI states
+  const isImminent = tick.imminent && !solved
+  const isAlignedNow = tick.aligned && !solved
+  const timerPct = isAlignedNow ? 100 : isImminent ? Math.round((1 - tick.msUntilNext / WARNING) * 100) : 0
+
+  let statusMsg = "Observe les vagues — frappe quand les trois s'alignent"
+  if (solved) statusMsg = "Synchronisation parfaite. La voie est ouverte."
+  else if (failFlash) statusMsg = "Hors rythme."
+  else if (isAlignedNow) statusMsg = "MAINTENANT !"
+  else if (isImminent) statusMsg = "Prépare-toi…"
+  else if (hits > 0) statusMsg = `${hits} / ${REQUIRED} synchronisations`
+
+  const btnBorder = solved ? "var(--gold)"
+    : failFlash ? "#c04040"
+    : isAlignedNow ? "var(--gold)"
+    : isImminent ? "#8060d0"
+    : "rgba(200,169,110,0.2)"
+  const btnGlow = solved ? "0 0 24px rgba(200,169,110,0.6)"
+    : failFlash ? "0 0 16px rgba(192,64,64,0.6)"
+    : isAlignedNow ? "0 0 22px rgba(200,169,110,0.7)"
+    : isImminent ? "0 0 14px rgba(128,96,208,0.5)"
+    : "none"
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "18px", width: "100%" }}>
+
+      {/* Label */}
+      <p className="font-cinzel" style={{ color: "var(--gold-dark)", fontSize: "9px", letterSpacing: "4px", textTransform: "uppercase" }}>
+        La Patience du Sang · 同調
       </p>
 
-      <div
-        className="relative"
-        style={{
-          width: `${SIZE}px`,
-          height: `${SIZE}px`,
-          border: `1px solid ${solved ? goldColor : "rgba(200,169,110,0.2)"}`,
-          borderRadius: "50%",
-          boxShadow: solved ? `0 0 28px rgba(200,169,110,0.45)` : "none",
-          transition: "box-shadow 0.8s ease, border-color 0.6s ease",
-        }}
-      >
-        {/* Center kanji */}
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{
-            fontFamily: "var(--font-cinzel-var), serif",
-            fontSize: "52px",
-            color: goldColor,
-            opacity: solved ? 0.9 : 0.08,
-            transition: "opacity 0.8s ease",
-            zIndex: 2,
-            textShadow: solved ? `0 0 24px rgba(200,169,110,0.85)` : "none",
-          }}
-        >
-          水
-        </div>
-
-        {/* Cross divider */}
-        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }}>
-          <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-            <line x1={half} y1="11" x2={half} y2={SIZE - 11} stroke="rgba(200,169,110,0.15)" strokeWidth="1" />
-            <line x1="11" y1={half} x2={SIZE - 11} y2={half} stroke="rgba(200,169,110,0.15)" strokeWidth="1" />
-            <circle cx={half} cy={half} r="5" fill={solved ? goldColor : "rgba(200,169,110,0.2)"} />
-          </svg>
-        </div>
-
-        {/* 4 quadrant buttons */}
-        {quadPositions.map((pos, i) => {
-          return (
-            <button
-              key={i}
-              onClick={() => rotate(i)}
-              disabled={disabled || solved}
-              style={{
-                position: "absolute",
-                left: pos.x === 0 ? `${pad}px` : `${gap}px`,
-                top: pos.y === 0 ? `${pad}px` : `${gap}px`,
-                width: `${btnSize}px`,
-                height: `${btnSize}px`,
-                border: "none",
-                background: "transparent",
-                cursor: disabled || solved ? "default" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius:
-                  pos.x === 0 && pos.y === 0 ? "50% 0 0 0" :
-                  pos.x === 1 && pos.y === 0 ? "0 50% 0 0" :
-                  pos.x === 0 && pos.y === 1 ? "0 0 0 50%" : "0 0 50% 0",
-                zIndex: 3,
-                transition: "background 0.3s",
-              }}
-              onMouseEnter={(e) => {
-                if (!disabled && !solved)
-                  (e.currentTarget as HTMLElement).style.background = "rgba(200,169,110,0.06)"
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "transparent"
-              }}
-            >
-              <div
-                style={{
-                  transform: `rotate(${rotations[i]}deg)`,
-                  transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <svg width="64" height="64" viewBox="0 0 54 54">
-                  <path
-                    d={QUAD_PATHS[i]}
-                    stroke={solved ? goldColor : waterBlue}
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    fill="none"
-                    opacity={0.5}
-                    style={{ transition: "stroke 0.4s" }}
-                  />
-                  <circle cx="8" cy="8" r="3.5"
-                    fill="rgba(200,169,110,0.25)"
-                    style={{ transition: "fill 0.4s" }}
-                  />
-                </svg>
-              </div>
-            </button>
-          )
-        })}
-
-        {/* Success pulse */}
-        {(solved || justSolved) && (
-          <div
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{ border: `2px solid ${goldColor}`, animation: "goldPulse 2s ease-in-out infinite" }}
-          />
-        )}
+      {/* Attempt dots */}
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        {Array.from({ length: REQUIRED }).map((_, i) => (
+          <div key={i} style={{
+            width: "8px", height: "8px", borderRadius: "50%",
+            background: i < hits ? "var(--gold)" : "rgba(255,255,255,0.1)",
+            border: `1px solid ${i < hits ? "var(--gold)" : "rgba(255,255,255,0.15)"}`,
+            boxShadow: i < hits ? "0 0 6px rgba(200,169,110,0.6)" : "none",
+            transition: "all 0.3s",
+          }} />
+        ))}
+        <div style={{ width: "1px", height: "12px", background: "rgba(255,255,255,0.1)", margin: "0 3px" }} />
+        {Array.from({ length: MAX_FAIL }).map((_, i) => (
+          <div key={i} style={{
+            width: "6px", height: "6px", borderRadius: "50%",
+            background: i < fails ? "#c04040" : "rgba(255,255,255,0.08)",
+            border: `1px solid ${i < fails ? "#c04040" : "rgba(255,255,255,0.12)"}`,
+            transition: "all 0.3s",
+          }} />
+        ))}
       </div>
 
-      <p style={{
-        color: solved ? "var(--gold)" : "var(--muted)",
-        fontSize: "12px", fontStyle: "italic",
-        fontFamily: "var(--font-cormorant-var), Georgia, serif",
-        transition: "color 0.5s",
+      {/* Arena */}
+      <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+        {/* Left bars */}
+        <div style={{ display: "flex", gap: "10px" }}>
+          {PERIODS.slice(0, 2).map((p, i) => (
+            <WaveBar key={p} value={tick.values[i]} period={p} index={i}
+              aligned={isAlignedNow} imminent={isImminent} solved={solved} />
+          ))}
+        </div>
+
+        {/* Centre: shinobi + button */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+          <ShinobiSVG aligned={isAlignedNow} imminent={isImminent} solved={solved} failed={failFlash} />
+
+          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <AnimatePresence>
+              {burstKey > 0 && (
+                <motion.div key={burstKey} style={{
+                  position: "absolute", width: "120px", height: "120px",
+                  borderRadius: "50%", border: "2px solid var(--gold)",
+                }}
+                  initial={{ opacity: 1, scale: 0.5 }}
+                  animate={{ opacity: 0, scale: 2.0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.7, ease: "easeOut" }}
+                />
+              )}
+            </AnimatePresence>
+
+            <button
+              onClick={handleClick}
+              disabled={solved || disabled}
+              style={{
+                width: "72px", height: "72px", borderRadius: "50%",
+                border: `2px solid ${btnBorder}`,
+                background: solved ? "rgba(200,169,110,0.08)" : "rgba(15,18,24,0.8)",
+                boxShadow: btnGlow,
+                cursor: (solved || disabled) ? "default" : "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", gap: "3px", outline: "none",
+                transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
+              }}
+            >
+              <span style={{ fontFamily: "serif", fontSize: "20px", color: "var(--gold)", pointerEvents: "none",
+                textShadow: "0 0 6px rgba(200,169,110,0.4)" }}>刻</span>
+              <span style={{ fontFamily: "var(--font-cinzel-var), 'Cinzel', serif", fontSize: "7px",
+                letterSpacing: "2px", color: "var(--muted)", textTransform: "uppercase", pointerEvents: "none" }}>
+                {solved ? "Résolu" : "Frappe"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right bar */}
+        <WaveBar value={tick.values[2]} period={PERIODS[2]} index={2}
+          aligned={isAlignedNow} imminent={isImminent} solved={solved} />
+      </div>
+
+      {/* Timer bar */}
+      <div style={{ width: "160px", height: "2px", background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden" }}>
+        <div style={{
+          height: "100%", width: `${timerPct}%`,
+          background: isAlignedNow ? "var(--gold)" : isImminent ? "#8060d0" : "var(--gold-dark)",
+          borderRadius: "2px", transition: "width 0.08s linear, background 0.3s",
+        }} />
+      </div>
+
+      {/* Status */}
+      <p className="font-cormorant" style={{
+        color: solved ? "var(--gold)" : failFlash ? "#c04040" : isAlignedNow ? "var(--gold)" : isImminent ? "#9070d0" : "var(--muted)",
+        fontSize: "13px", fontStyle: "italic", textAlign: "center", minHeight: "20px",
+        transition: "color 0.3s",
       }}>
-        {solved ? "水 — Aligné" : "Cliquez chaque quadrant pour le faire pivoter"}
+        {statusMsg}
       </p>
     </div>
   )
