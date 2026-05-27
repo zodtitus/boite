@@ -277,7 +277,8 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
               {burstKey > 0 && (
                 <motion.div key={burstKey}
                   style={{ position: "absolute", width: "120px", height: "120px",
-                    borderRadius: "50%", border: "2px solid var(--gold)" }}
+                    borderRadius: "50%", border: "2px solid var(--gold)",
+                    pointerEvents: "none" }}
                   initial={{ opacity: 1, scale: 0.5 }}
                   animate={{ opacity: 0, scale: 2.0 }}
                   exit={{ opacity: 0 }}
