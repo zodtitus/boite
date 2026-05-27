@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState } from "react"
 
 const CORRECT_ORDER = [0, 2, 4, 1, 3]
 const SIZE = 220
@@ -24,14 +24,6 @@ export default function Mechanism3({ onSolved, disabled }: Mechanism3Props) {
   const [pressed, setPressed] = useState<number[]>([])
   const [solved, setSolved] = useState(false)
   const [error, setError] = useState(false)
-  const [hintStep, setHintStep] = useState(0)
-  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    if (solved) return
-    hintTimerRef.current = setTimeout(() => setHintStep((s) => (s + 1) % 5), 1200)
-    return () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current) }
-  }, [hintStep, solved])
 
   function pressOrb(posIdx: number) {
     if (disabled || solved || error) return
@@ -50,9 +42,8 @@ export default function Mechanism3({ onSolved, disabled }: Mechanism3Props) {
 
   const orbPositions = Array.from({ length: 5 }, (_, i) => getPentagonPos(i))
 
-  function orbState(i: number): "done" | "hint" | "idle" {
+  function orbState(i: number): "done" | "idle" {
     if (pressed.includes(i)) return "done"
-    if (CORRECT_ORDER[hintStep] === i && pressed.length === 0) return "hint"
     return "idle"
   }
 
@@ -101,7 +92,6 @@ export default function Mechanism3({ onSolved, disabled }: Mechanism3Props) {
         {orbPositions.map((pos, i) => {
           const state = error ? "error" : orbState(i)
           const isDone = state === "done"
-          const isHint = state === "hint"
           const isError = state === "error"
 
           return (
@@ -119,16 +109,12 @@ export default function Mechanism3({ onSolved, disabled }: Mechanism3Props) {
                 alignItems: "center",
                 justifyContent: "center",
                 borderColor: isDone ? "var(--gold)" :
-                             isHint ? "rgba(200,169,110,0.6)" :
                              isError ? "#c04040" : undefined,
                 background: isDone ? "rgba(200,169,110,0.18)" :
-                            isHint ? "rgba(200,169,110,0.07)" :
                             isError ? "rgba(192,64,64,0.15)" : undefined,
                 boxShadow: isDone ? "0 0 18px rgba(200,169,110,0.55)" :
-                           isHint ? "0 0 10px rgba(200,169,110,0.25)" :
                            isError ? "0 0 12px rgba(192,64,64,0.45)" : undefined,
-                animation: isDone ? "goldGlow 2s ease-in-out infinite" :
-                           isHint ? "orbIdle 1.2s ease-in-out" : "none",
+                animation: isDone ? "goldGlow 2s ease-in-out infinite" : "none",
                 transition: "all 0.3s ease",
                 cursor: disabled || solved ? "default" : "pointer",
               }}

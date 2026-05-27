@@ -103,7 +103,6 @@ export default function Mechanism1({ onSolved, disabled }: Mechanism1Props) {
 
         {/* 4 quadrant buttons */}
         {quadPositions.map((pos, i) => {
-          const isCorrect = rotations[i] === TARGETS[i]
           return (
             <button
               key={i}
@@ -150,15 +149,15 @@ export default function Mechanism1({ onSolved, disabled }: Mechanism1Props) {
                 <svg width="64" height="64" viewBox="0 0 54 54">
                   <path
                     d={QUAD_PATHS[i]}
-                    stroke={isCorrect ? goldColor : waterBlue}
+                    stroke={solved ? goldColor : waterBlue}
                     strokeWidth="2.5"
                     strokeLinecap="round"
                     fill="none"
-                    opacity={isCorrect ? 0.9 : 0.5}
-                    style={{ transition: "stroke 0.4s, opacity 0.4s" }}
+                    opacity={0.5}
+                    style={{ transition: "stroke 0.4s" }}
                   />
                   <circle cx="8" cy="8" r="3.5"
-                    fill={isCorrect ? goldColor : "rgba(200,169,110,0.25)"}
+                    fill="rgba(200,169,110,0.25)"
                     style={{ transition: "fill 0.4s" }}
                   />
                 </svg>
