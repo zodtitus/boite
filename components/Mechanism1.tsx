@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { computeTick, isAligned, PERIODS, TOLERANCE, WARNING, type WaveTick } from "@/lib/alignmentDetector"
 import { useAudio } from "@/lib/useAudio"
 
-const REQUIRED = 3
-const MAX_FAIL = 5
+const REQUIRED = 2
+const MAX_FAIL = 7
 
 // ── Wave bar ─────────────────────────────────────────────────────────────────
 const BAR_COLORS = [

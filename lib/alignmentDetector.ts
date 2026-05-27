@@ -5,8 +5,8 @@
  */
 
 export const PERIODS   = [4000, 6000, 9000] as const
-export const TOLERANCE = 200   // ms — half-width of the click window
-export const WARNING   = 800   // ms — warn this far ahead
+export const TOLERANCE = 500   // ms — half-width of the click window
+export const WARNING   = 1400  // ms — warn this far ahead
 
 export function waveValue(period: number, elapsedMs: number): number {
   return Math.sin((2 * Math.PI * elapsedMs) / period)
