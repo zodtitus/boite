@@ -6,8 +6,8 @@ import { useAudio } from "@/lib/useAudio"
 
 const TRUE_KANJI  = "月"
 const ILLUSIONS   = ["目", "日", "白", "明", "用", "囚", "旧"]
-const REQUIRED    = 3
-const MAX_FAIL    = 4
+const REQUIRED    = 4          // 4 identifications to win
+const ROUND_MS    = 5000       // ms allowed between successive correct hits
 const STAGE_W     = 440
 const STAGE_H     = 270
 
@@ -148,17 +148,58 @@ interface Props { onSolved: () => void; disabled: boolean }
 
 export default function Mechanism2({ onSolved, disabled }: Props) {
   const { play, resume } = useAudio()
-  const mistTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const mistTimer   = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const timerRafRef = useRef<number>(0)
+  const timerStart  = useRef<number>(0)
+  const timerAlive  = useRef(false)
 
-  const [symbols, setSymbols] = useState<SymData[]>(() => genSymbols())
-  const [hits,    setHits]    = useState(0)
-  const [fails,   setFails]   = useState(0)
-  const [solved,  setSolved]  = useState(false)
-  const [flash,   setFlash]   = useState<{ id: number; type: "correct"|"wrong" } | null>(null)
+  const [symbols,     setSymbols]     = useState<SymData[]>(() => genSymbols())
+  const [hits,        setHits]        = useState(0)
+  const [solved,      setSolved]      = useState(false)
+  const [flash,       setFlash]       = useState<{ id: number; type: "correct"|"wrong" } | null>(null)
   const [screenFlash, setScreenFlash] = useState<"correct"|"wrong"|null>(null)
-  const [mistDense, setMistDense]     = useState(false)
+  const [mistDense,   setMistDense]   = useState(false)
+  const [timerPct,    setTimerPct]    = useState(0)   // 1 = full, 0 = expired/idle
+  const [timerWarn,   setTimerWarn]   = useState(false) // true when <30% left
 
-  // Mist cycle
+  // ── Round countdown ───────────────────────────────────────────────────────
+  const stopTimer = useCallback(() => {
+    cancelAnimationFrame(timerRafRef.current)
+    timerAlive.current = false
+    setTimerPct(0)
+    setTimerWarn(false)
+  }, [])
+
+  const startTimer = useCallback(() => {
+    cancelAnimationFrame(timerRafRef.current)
+    timerAlive.current = true
+    timerStart.current = Date.now()
+
+    function tick() {
+      const elapsed = Date.now() - timerStart.current
+      const pct = Math.max(0, 1 - elapsed / ROUND_MS)
+      setTimerPct(pct)
+      setTimerWarn(pct < 0.30)
+      if (pct <= 0 && timerAlive.current) {
+        timerAlive.current = false
+        // Timer expired → back to round 1
+        play("fail")
+        setHits(0)
+        setTimerPct(0)
+        setTimerWarn(false)
+        setScreenFlash("wrong")
+        setTimeout(() => setScreenFlash(null), 350)
+        setTimeout(() => setSymbols(genSymbols()), 400)
+        return
+      }
+      if (timerAlive.current) {
+        timerRafRef.current = requestAnimationFrame(tick)
+      }
+    }
+    timerRafRef.current = requestAnimationFrame(tick)
+  }, [play])
+
+  // ── Mist cycle ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (disabled || solved) return
     function cycle() {
@@ -172,9 +213,11 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
     return () => clearTimeout(mistTimer.current)
   }, [disabled, solved])
 
+  // ── Click handler ─────────────────────────────────────────────────────────
   const handleClick = useCallback((id: number, isTrue: boolean) => {
     if (solved || disabled) return
     resume()
+
     setFlash({ id, type: isTrue ? "correct" : "wrong" })
     setScreenFlash(isTrue ? "correct" : "wrong")
     setTimeout(() => setFlash(null), 380)
@@ -185,31 +228,44 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
       setHits(h => {
         const next = h + 1
         if (next >= REQUIRED) {
-          play("success"); setSolved(true)
+          stopTimer()
+          play("success")
+          setSolved(true)
           setTimeout(() => onSolved(), 1200)
         } else {
-          setTimeout(() => setSymbols(genSymbols()), 500)
+          // Start/restart the inter-round countdown
+          startTimer()
+          setTimeout(() => setSymbols(genSymbols()), 480)
         }
         return next
       })
     } else {
+      // Any error → immediately back to round 1
       play("illusion")
-      setFails(f => {
-        const next = f + 1
-        if (next >= MAX_FAIL) setTimeout(() => { setHits(0); setFails(0); setSymbols(genSymbols()) }, 800)
-        return next
-      })
+      stopTimer()
+      setTimeout(() => {
+        setHits(0)
+        setSymbols(genSymbols())
+      }, 480)
     }
-  }, [solved, disabled, play, resume, onSolved])
+  }, [solved, disabled, play, resume, onSolved, startTimer, stopTimer])
 
-  const statusMsg = solved ? "L'illusion se dissipe. Tu perces les ténèbres."
-    : screenFlash === "correct" ? "Juste — symbole reconnu."
-    : screenFlash === "wrong"   ? "Illusion. Ton esprit est trompé."
-    : hits > 0 ? `${hits} / ${REQUIRED} symboles identifiés`
+  // ── Status text ───────────────────────────────────────────────────────────
+  const statusMsg = solved
+    ? "L'illusion se dissipe. Tu perces les ténèbres."
+    : screenFlash === "correct"
+    ? "Juste — symbole reconnu."
+    : screenFlash === "wrong"
+    ? "Illusion. Retour au début."
+    : timerWarn && hits > 0
+    ? "Vite — le temps se dissipe…"
+    : hits > 0
+    ? `${hits} / ${REQUIRED} — trouve le suivant`
     : "Trouve le vrai symbole parmi les illusions."
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", width: "100%" }}>
+
       {/* Label */}
       <p className="font-cinzel" style={{ color: "var(--gold-dark)", fontSize: "9px", letterSpacing: "4px", textTransform: "uppercase" }}>
         L&apos;Illusion des Abysses · 幻惑
@@ -237,7 +293,7 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
           {screenFlash && (
             <motion.div style={{ position: "absolute", inset: 0, zIndex: 10, pointerEvents: "none",
               background: screenFlash === "correct" ? "rgba(200,169,110,1)" : "rgba(200,50,50,1)" }}
-              initial={{ opacity: 0 }} animate={{ opacity: screenFlash === "correct" ? 0.10 : 0.15 }}
+              initial={{ opacity: 0 }} animate={{ opacity: screenFlash === "correct" ? 0.10 : 0.18 }}
               exit={{ opacity: 0 }} transition={{ duration: 0.14 }} />
           )}
         </AnimatePresence>
@@ -267,34 +323,57 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
         </AnimatePresence>
       </div>
 
-      {/* Dots */}
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      {/* Round progress dots */}
+      <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
         {Array.from({ length: REQUIRED }).map((_, i) => (
           <div key={i} style={{
-            width: "8px", height: "8px", borderRadius: "50%",
-            background: i < hits ? "var(--gold)" : "rgba(255,255,255,0.1)",
+            width: "9px", height: "9px", borderRadius: "50%",
+            background: i < hits ? "var(--gold)" : "rgba(255,255,255,0.10)",
             border: `1px solid ${i < hits ? "var(--gold)" : "rgba(255,255,255,0.15)"}`,
-            boxShadow: i < hits ? "0 0 6px rgba(200,169,110,0.6)" : "none", transition: "all 0.3s",
-          }} />
-        ))}
-        <div style={{ width: "1px", height: "12px", background: "rgba(255,255,255,0.1)", margin: "0 3px" }} />
-        {Array.from({ length: MAX_FAIL }).map((_, i) => (
-          <div key={i} style={{
-            width: "6px", height: "6px", borderRadius: "50%",
-            background: i < fails ? "#c04040" : "rgba(255,255,255,0.08)",
-            border: `1px solid ${i < fails ? "#c04040" : "rgba(255,255,255,0.12)"}`,
+            boxShadow: i < hits ? "0 0 8px rgba(200,169,110,0.6)" : "none",
             transition: "all 0.3s",
           }} />
         ))}
       </div>
 
+      {/* Inter-round timer bar */}
+      <div style={{
+        width: "200px", height: "3px",
+        background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden",
+        opacity: timerPct > 0 ? 1 : 0,
+        transition: "opacity 0.3s",
+      }}>
+        <motion.div style={{
+          height: "100%", borderRadius: "2px",
+          background: timerWarn
+            ? "linear-gradient(90deg, #c04040, #e06060)"
+            : "linear-gradient(90deg, var(--gold-dark), var(--gold))",
+        }}
+          animate={{ width: `${Math.round(timerPct * 100)}%` }}
+          transition={{ duration: 0.05 }}
+        />
+      </div>
+
       {/* Status */}
       <p className="font-cormorant" style={{
-        color: solved ? "var(--gold)" : screenFlash === "correct" ? "var(--gold)" : screenFlash === "wrong" ? "#c04040" : "var(--muted)",
-        fontSize: "13px", fontStyle: "italic", textAlign: "center", minHeight: "20px",
+        color: solved              ? "var(--gold)"
+          : screenFlash === "correct" ? "var(--gold)"
+          : screenFlash === "wrong"   ? "#c04040"
+          : timerWarn              ? "#e07050"
+          : "var(--muted)",
+        fontSize: "13px", fontStyle: "italic",
+        textAlign: "center", minHeight: "20px",
         transition: "color 0.3s",
       }}>
         {statusMsg}
+      </p>
+
+      {/* Rules hint */}
+      <p className="font-cinzel" style={{
+        fontSize: "8px", letterSpacing: "2px",
+        color: "var(--muted)", opacity: 0.38, textTransform: "uppercase", textAlign: "center",
+      }}>
+        4 fois d'affilée · toute erreur recommence depuis le début
       </p>
     </div>
   )
