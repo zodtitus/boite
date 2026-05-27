@@ -9,117 +9,35 @@ import Mechanism1 from "@/components/Mechanism1"
 import Mechanism2 from "@/components/Mechanism2"
 import Mechanism3 from "@/components/Mechanism3"
 import OpeningSequence from "@/components/OpeningSequence"
-import LightningFlash, { LightningType } from "@/components/LightningFlash"
-
-// Drum window: 0:50 → 1:15
-const BEAT_START = 50
-const BEAT_END   = 75
 
 export default function Home() {
   const router = useRouter()
-  const [solved, setSolved]         = useState<[boolean, boolean, boolean]>([false, false, false])
-  const [isOpening, setIsOpening]   = useState(false)
+  const [solved, setSolved]           = useState<[boolean, boolean, boolean]>([false, false, false])
+  const [isOpening, setIsOpening]     = useState(false)
   const [showOpening, setShowOpening] = useState(false)
-  const [lightning, setLightning]   = useState<{ type: LightningType; key: number } | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const audioRef       = useRef<HTMLAudioElement | null>(null)
-  const lastTypeRef    = useRef<number>(0)
-  const lightningKeyRef = useRef<number>(0)
-  const solvedRef      = useRef<[boolean, boolean, boolean]>([false, false, false])
-
-  // Keep solvedRef in sync so the RAF closure can read it without stale state
-  useEffect(() => { solvedRef.current = solved }, [solved])
-
-  // ── Music + beat detection ───────────────────────────────────────────────
+  // ── Music ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const audio = new Audio("/puzzle-music.mp3")
     audio.loop   = true
     audio.volume = 0.5
     audioRef.current = audio
 
-    let audioCtx: AudioContext | null  = null
-    let rafId = 0
-    let analyserReady = false
-
-    // Per-RAF mutable state (avoid stale closure with refs)
-    let prevEnergy = 0
-    let cooldown   = 0
-
-    function startBeatLoop(analyser: AnalyserNode) {
-      const data = new Uint8Array(analyser.frequencyBinCount)
-
-      function tick() {
-        rafId = requestAnimationFrame(tick)
-
-        const t = audio.currentTime
-        if (t < BEAT_START || t > BEAT_END) {
-          prevEnergy = 0
-          cooldown   = 0
-          return
-        }
-
-        analyser.getByteFrequencyData(data)
-        // Bass bins 0-3 (≈0–260 Hz) → kick drum territory
-        const energy = (data[0] + data[1] + data[2] + data[3]) / 4
-
-        const isHit = energy > 65 && energy > prevEnergy + 25 && cooldown <= 0
-        if (isHit) {
-          // Pick a type different from the last one
-          let t: number
-          do { t = Math.floor(Math.random() * 5) + 1 } while (t === lastTypeRef.current)
-          lastTypeRef.current = t
-
-          lightningKeyRef.current++
-          setLightning({ type: t as LightningType, key: lightningKeyRef.current })
-
-          cooldown = 38  // ~633 ms minimum gap — one flash per beat, not per sub-hit
-        }
-
-        // Smooth the energy to catch transients, not sustained tones
-        prevEnergy = energy * 0.55 + prevEnergy * 0.45
-        if (cooldown > 0) cooldown--
-      }
-
-      rafId = requestAnimationFrame(tick)
-    }
-
-    function setupAnalyser() {
-      if (analyserReady) return
-      analyserReady = true
-      try {
-        audioCtx = new AudioContext()
-        audioCtx.resume()
-        const src = audioCtx.createMediaElementSource(audio)
-        const analyser = audioCtx.createAnalyser()
-        analyser.fftSize = 512
-        analyser.smoothingTimeConstant = 0.3
-        src.connect(analyser)
-        analyser.connect(audioCtx.destination)
-        startBeatLoop(analyser)
-      } catch {
-        // Web Audio not available — no lightning, music still plays
-      }
-    }
-
     function tryPlay() {
-      setupAnalyser()
       audio.play().catch(() => {})
       window.removeEventListener("pointerdown", tryPlay)
       window.removeEventListener("keydown", tryPlay)
     }
 
-    audio.play()
-      .then(() => setupAnalyser())
-      .catch(() => {
-        window.addEventListener("pointerdown", tryPlay)
-        window.addEventListener("keydown", tryPlay)
-      })
+    audio.play().catch(() => {
+      window.addEventListener("pointerdown", tryPlay)
+      window.addEventListener("keydown", tryPlay)
+    })
 
     return () => {
-      cancelAnimationFrame(rafId)
       audio.pause()
       audio.src = ""
-      audioCtx?.close()
       window.removeEventListener("pointerdown", tryPlay)
       window.removeEventListener("keydown", tryPlay)
     }
@@ -132,7 +50,6 @@ export default function Home() {
       next[idx] = true
       if (next.every(Boolean)) {
         setTimeout(() => {
-          // Fade out music when opening sequence begins
           const audio = audioRef.current
           if (audio) {
             const fade = setInterval(() => {
@@ -159,21 +76,10 @@ export default function Home() {
     router.push("/carnet")
   }, [router])
 
-  // Active mechanism index (which puzzle the player is currently on)
-  const activeMechIdx = solved[0] ? (solved[1] ? 2 : 1) : 0
   const allSolved = solved.every(Boolean)
 
   return (
     <>
-      {/* Lightning overlay — keyed so each beat re-mounts */}
-      {lightning && !allSolved && (
-        <LightningFlash
-          key={lightning.key}
-          type={lightning.type}
-          mechIdx={activeMechIdx}
-        />
-      )}
-
       <AnimatePresence>
         {showOpening && (
           <OpeningSequence onComplete={handleOpeningComplete} />
