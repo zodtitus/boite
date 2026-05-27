@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import WaterParticles from "@/components/WaterParticles"
@@ -15,6 +15,34 @@ export default function Home() {
   const [solved, setSolved] = useState<[boolean, boolean, boolean]>([false, false, false])
   const [isOpening, setIsOpening] = useState(false)
   const [showOpening, setShowOpening] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Background music — plays only during the puzzle page
+  useEffect(() => {
+    const audio = new Audio("/puzzle-music.mp3")
+    audio.loop = true
+    audio.volume = 0.5
+    audioRef.current = audio
+
+    function tryPlay() {
+      audio.play().catch(() => {})
+      window.removeEventListener("pointerdown", tryPlay)
+      window.removeEventListener("keydown", tryPlay)
+    }
+
+    // Try autoplay; if blocked, start on first interaction
+    audio.play().catch(() => {
+      window.addEventListener("pointerdown", tryPlay)
+      window.addEventListener("keydown", tryPlay)
+    })
+
+    return () => {
+      audio.pause()
+      audio.src = ""
+      window.removeEventListener("pointerdown", tryPlay)
+      window.removeEventListener("keydown", tryPlay)
+    }
+  }, [])
 
   function solve(idx: number) {
     setSolved((prev) => {
@@ -22,6 +50,18 @@ export default function Home() {
       next[idx] = true
       if (next.every(Boolean)) {
         setTimeout(() => {
+          // Fade out music smoothly when the opening sequence begins
+          const audio = audioRef.current
+          if (audio) {
+            const fadeOut = setInterval(() => {
+              if (audio.volume > 0.03) {
+                audio.volume = Math.max(0, audio.volume - 0.03)
+              } else {
+                audio.pause()
+                clearInterval(fadeOut)
+              }
+            }, 60)
+          }
           setIsOpening(true)
           setTimeout(() => setShowOpening(true), 700)
         }, 400)
