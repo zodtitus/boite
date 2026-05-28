@@ -1,43 +1,39 @@
 /**
- * Wave alignment detector — v2
+ * Wave alignment detector — v3
  *
  * Periods : A=3000ms  B=4000ms  C=6000ms  (LCM = 12 000ms)
- * Phase offsets chosen so ALL THREE waves peak simultaneously at t=5000ms
- * (≈5s after puzzle mount, giving the player time to read).
+ * Phase offsets chosen so ALL THREE waves peak simultaneously at t=5000ms.
  *
- * Alignment window = all three wave values ≥ THRESHOLD (≈ ±1150ms around
- * the peak at full threshold 0.35). Repeats every 12 seconds.
+ * computeTick / isAligned / msToNextAlignment accept optional `threshold`
+ * and `warning` params so Mechanism1 can tighten the window as the player
+ * progresses through hits (difficulty scaling).
  *
- * Confirmed windows in a 36s cycle (threshold 0.35):
- *   ~4420–5580ms  (width ≈ 1160ms)
- *   ~16420–17580ms
- *   ~28420–29580ms
+ * Window width at threshold 0.35 ≈ 1160ms.  At 0.65 ≈ 690ms.
+ * Repeats every 12 000ms.
  */
 
 export const PERIODS    = [3000, 4000, 6000] as const
-// Shift each wave so it peaks at t = 5000ms:
-//   peak when (t - SHIFT) / period = 1/4  →  SHIFT = t_peak - period/4
 const SHIFTS            = [4250, 4000, 3500] as const
-export const THRESHOLD  = 0.35   // wave value must exceed this for "high"
-export const WARNING    = 1600   // ms before window start to pulse the warning
+export const THRESHOLD  = 0.35   // default
+export const WARNING    = 1600   // default ms before window start
 
-/** Sine value [−1,1] for wave i at elapsed time */
+/** Sine value [−1, 1] for wave i at elapsed time */
 export function waveValue(i: 0|1|2, elapsedMs: number): number {
   return Math.sin((2 * Math.PI * (elapsedMs - SHIFTS[i])) / PERIODS[i])
 }
 
-/** True when ALL three waves are in their high zone simultaneously */
-export function isAligned(elapsedMs: number): boolean {
-  return (waveValue(0, elapsedMs) >= THRESHOLD) &&
-         (waveValue(1, elapsedMs) >= THRESHOLD) &&
-         (waveValue(2, elapsedMs) >= THRESHOLD)
+/** True when ALL three waves are simultaneously above `threshold` */
+export function isAligned(elapsedMs: number, threshold = THRESHOLD): boolean {
+  return (waveValue(0, elapsedMs) >= threshold) &&
+         (waveValue(1, elapsedMs) >= threshold) &&
+         (waveValue(2, elapsedMs) >= threshold)
 }
 
-/** Milliseconds until the next alignment window begins (scans ≤ 12001ms) */
-export function msToNextAlignment(elapsedMs: number): number {
-  if (isAligned(elapsedMs)) return 0
+/** Milliseconds until the next alignment window begins (scans ≤ 12 001ms) */
+export function msToNextAlignment(elapsedMs: number, threshold = THRESHOLD): number {
+  if (isAligned(elapsedMs, threshold)) return 0
   for (let dt = 5; dt <= 12500; dt += 5) {
-    if (isAligned(elapsedMs + dt)) return dt
+    if (isAligned(elapsedMs + dt, threshold)) return dt
   }
   return 12000
 }
@@ -45,26 +41,26 @@ export function msToNextAlignment(elapsedMs: number): number {
 export interface WaveTick {
   elapsed: number
   values: [number, number, number]
-  aligned: boolean          // inside click window right now
-  msUntilNext: number       // ms to next window
-  imminent: boolean         // msUntilNext < WARNING
-  windowPct: number         // 0–1 fill for the timer bar (1 = window open)
+  aligned: boolean
+  msUntilNext: number
+  imminent: boolean
+  windowPct: number
 }
 
-export function computeTick(startMs: number): WaveTick {
-  const elapsed   = Date.now() - startMs
-  const values    = [
+export function computeTick(
+  startMs: number,
+  threshold = THRESHOLD,
+  warning   = WARNING,
+): WaveTick {
+  const elapsed     = Date.now() - startMs
+  const values      = [
     waveValue(0, elapsed),
     waveValue(1, elapsed),
     waveValue(2, elapsed),
   ] as [number, number, number]
-  const aligned      = isAligned(elapsed)
-  const msUntilNext  = msToNextAlignment(elapsed)
-  const imminent     = !aligned && msUntilNext < WARNING
-  const windowPct    = aligned
-    ? 1
-    : imminent
-    ? 1 - msUntilNext / WARNING
-    : 0
+  const aligned     = isAligned(elapsed, threshold)
+  const msUntilNext = msToNextAlignment(elapsed, threshold)
+  const imminent    = !aligned && msUntilNext < warning
+  const windowPct   = aligned ? 1 : imminent ? 1 - msUntilNext / warning : 0
   return { elapsed, values, aligned, msUntilNext, imminent, windowPct }
 }

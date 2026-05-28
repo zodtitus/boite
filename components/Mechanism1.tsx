@@ -1,42 +1,71 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback, useId } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { computeTick, isAligned, PERIODS, WARNING, type WaveTick } from "@/lib/alignmentDetector"
+import { computeTick, isAligned, type WaveTick } from "@/lib/alignmentDetector"
 import { useAudio } from "@/lib/useAudio"
 import { useMusicContext } from "@/lib/MusicContext"
 import ChakraBody from "@/components/ChakraBody"
 
-const REQUIRED = 2
-const MAX_FAIL = 7
+const REQUIRED = 7
+const MAX_FAIL = 3
+
+/**
+ * Difficulty scaling per hit count:
+ *
+ *  hits  threshold  warning   help level
+ *   0      0.35     1600ms    full  (bars, "MAINTENANT!", imminence bar, hint, sound)
+ *   1      0.38     1500ms    full
+ *   2      0.42     1380ms    full
+ *   3      0.46     1240ms    partial (no "MAINTENANT!")
+ *   4      0.51     1080ms    partial (no imminence bar)
+ *   5      0.56      900ms    minimal (no warning sound)
+ *   6      0.61      700ms    minimal (hint hidden)
+ *  6+      0.65+     700ms    silent
+ */
+function dynThreshold(hits: number): number {
+  const steps = [0.35, 0.38, 0.42, 0.46, 0.51, 0.56, 0.61, 0.65]
+  return steps[Math.min(hits, steps.length - 1)]
+}
+function dynWarning(hits: number): number {
+  return Math.max(700, 1600 - hits * 140)
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 interface Props { onSolved: () => void; disabled: boolean }
 
 export default function Mechanism1({ onSolved, disabled }: Props) {
-  const { play, resume }    = useAudio()
-  const { getBassPulse }    = useMusicContext()
-  const startRef   = useRef<number>(Date.now())
-  const rafRef     = useRef<number>(0)
-  const warnedRef  = useRef(false)
+  const { play, resume }  = useAudio()
+  const { getBassPulse }  = useMusicContext()
+  const startRef  = useRef<number>(Date.now())
+  const rafRef    = useRef<number>(0)
+  const warnedRef = useRef(false)
+  const hitsRef   = useRef(0)   // mirror of hits for RAF loop (no closure stale)
 
-  const [tick, setTick]           = useState<WaveTick>(() => computeTick(startRef.current))
-  const [hits, setHits]           = useState(0)
-  const [fails, setFails]         = useState(0)
-  const [solved, setSolved]       = useState(false)
-  const [failFlash, setFailFlash] = useState(false)
-  const [burstKey, setBurstKey]   = useState(0)
+  const [tick, setTick]             = useState<WaveTick>(() => computeTick(startRef.current))
+  const [hits, setHits]             = useState(0)
+  const [fails, setFails]           = useState(0)
+  const [solved, setSolved]         = useState(false)
+  const [failFlash, setFailFlash]   = useState(false)
+  const [burstKey, setBurstKey]     = useState(0)
   const [musicPulse, setMusicPulse] = useState(0)
 
-  // RAF loop — ticks wave state and reads bass pulse every frame
+  // Keep hitsRef in sync so the RAF loop always reads the latest value
+  useEffect(() => { hitsRef.current = hits }, [hits])
+
+  // RAF loop
   useEffect(() => {
     if (disabled) return
     function frame() {
-      const t = computeTick(startRef.current)
+      const h  = hitsRef.current
+      const th = dynThreshold(h)
+      const wa = dynWarning(h)
+      const t  = computeTick(startRef.current, th, wa)
       setTick(t)
       setMusicPulse(getBassPulse())
 
-      if (t.imminent && !warnedRef.current) {
+      // Warning sound — suppressed at high difficulty (hits >= 5)
+      if (t.imminent && !warnedRef.current && h < 5) {
         play("warning")
         warnedRef.current = true
       }
@@ -52,7 +81,8 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
     if (solved || disabled) return
     resume()
     const elapsed = Date.now() - startRef.current
-    if (isAligned(elapsed)) {
+    const th = dynThreshold(hitsRef.current)
+    if (isAligned(elapsed, th)) {
       play("align")
       setBurstKey(k => k + 1)
       setHits(h => {
@@ -70,7 +100,10 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
       setTimeout(() => setFailFlash(false), 450)
       setFails(f => {
         const next = f + 1
-        if (next >= MAX_FAIL) setTimeout(() => { setHits(0); setFails(0) }, 700)
+        if (next >= MAX_FAIL) {
+          // Reset fully on 3rd error
+          setTimeout(() => { setHits(0); setFails(0) }, 700)
+        }
         return next
       })
     }
@@ -79,20 +112,35 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
   const isImminent   = tick.imminent && !solved
   const isAlignedNow = tick.aligned  && !solved
 
-  // alignmentLevel = min of max(0, wave_i) across all waves
-  // Equals 0 when any wave is negative; rises toward 1 as all approach peak
+  // Alignment level for ChakraBody: min of max(0, wave_i) across waves
   const alignmentLevel = tick.values.reduce(
     (acc: number, v: number) => Math.min(acc, Math.max(0, v)),
     1
   )
 
-  let statusMsg = "Laisse ton chakra se synchroniser — frappe quand le corps se dissout"
-  if (solved)          statusMsg = "Synchronisation parfaite. La voie est ouverte."
-  else if (failFlash)  statusMsg = "Hors rythme."
-  else if (isAlignedNow) statusMsg = "MAINTENANT !"
-  else if (isImminent) statusMsg = "Prépare-toi…"
-  else if (hits > 0)   statusMsg = `${hits} / ${REQUIRED} synchronisations`
+  // ── Help level (0 = full, 3 = silent) ─────────────────────────────────────
+  const helpLevel = hits < 3 ? 0 : hits < 5 ? 1 : hits < 6 ? 2 : 3
+  const showImminenceBar = helpLevel < 2         // hidden at level 2+
+  const showNow          = helpLevel < 1         // "MAINTENANT!" only at level 0
+  const showHint         = helpLevel < 3         // hint text hidden at level 3
 
+  // ── Status message (progressively cryptic) ────────────────────────────────
+  let statusMsg: string
+  if (solved) {
+    statusMsg = "Synchronisation parfaite. La voie est ouverte."
+  } else if (failFlash) {
+    statusMsg = helpLevel === 0 ? "Hors rythme." : helpLevel === 1 ? "…" : ""
+  } else if (isAlignedNow) {
+    statusMsg = showNow ? "MAINTENANT !" : helpLevel === 1 ? "—" : ""
+  } else if (isImminent) {
+    statusMsg = helpLevel === 0 ? "Prépare-toi…" : helpLevel === 1 ? "…" : ""
+  } else if (hits > 0) {
+    statusMsg = `${hits} / ${REQUIRED}`
+  } else {
+    statusMsg = "Laisse ton chakra se synchroniser — frappe quand le corps se dissout"
+  }
+
+  // ── Button styling ────────────────────────────────────────────────────────
   const btnBorder = solved        ? "var(--gold)"
     : failFlash    ? "#c04040"
     : isAlignedNow ? "var(--gold)"
@@ -112,7 +160,7 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
   return (
     <div style={{
       display: "flex", flexDirection: "column",
-      alignItems: "center", gap: "16px", width: "100%",
+      alignItems: "center", gap: "14px", width: "100%",
     }}>
 
       {/* Label */}
@@ -124,22 +172,22 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
       </p>
 
       {/* Attempt dots */}
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
         {Array.from({ length: REQUIRED }).map((_, i) => (
           <div key={i} style={{
-            width: "8px", height: "8px", borderRadius: "50%",
-            background: i < hits ? "var(--gold)" : "rgba(255,255,255,0.10)",
-            border: `1px solid ${i < hits ? "var(--gold)" : "rgba(255,255,255,0.15)"}`,
-            boxShadow: i < hits ? "0 0 6px rgba(200,169,110,0.6)" : "none",
+            width: "7px", height: "7px", borderRadius: "50%",
+            background: i < hits ? "var(--gold)" : "rgba(255,255,255,0.08)",
+            border: `1px solid ${i < hits ? "var(--gold)" : "rgba(255,255,255,0.12)"}`,
+            boxShadow: i < hits ? "0 0 5px rgba(200,169,110,0.6)" : "none",
             transition: "all 0.3s",
           }} />
         ))}
-        <div style={{ width: "1px", height: "12px", background: "rgba(255,255,255,0.10)", margin: "0 3px" }} />
+        <div style={{ width: "1px", height: "10px", background: "rgba(255,255,255,0.08)", margin: "0 2px" }} />
         {Array.from({ length: MAX_FAIL }).map((_, i) => (
           <div key={i} style={{
             width: "6px", height: "6px", borderRadius: "50%",
-            background: i < fails ? "#c04040" : "rgba(255,255,255,0.08)",
-            border: `1px solid ${i < fails ? "#c04040" : "rgba(255,255,255,0.12)"}`,
+            background: i < fails ? "#c04040" : "rgba(255,255,255,0.07)",
+            border: `1px solid ${i < fails ? "#c04040" : "rgba(255,255,255,0.10)"}`,
             transition: "all 0.3s",
           }} />
         ))}
@@ -162,10 +210,8 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
             <motion.div
               key={burstKey}
               style={{
-                position: "absolute",
-                width: "130px", height: "130px",
-                borderRadius: "50%",
-                border: "2px solid var(--gold)",
+                position: "absolute", width: "130px", height: "130px",
+                borderRadius: "50%", border: "2px solid var(--gold)",
                 pointerEvents: "none",
               }}
               initial={{ opacity: 1, scale: 0.4 }}
@@ -208,20 +254,22 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
         </button>
       </div>
 
-      {/* Imminence bar */}
-      <div style={{
-        width: "160px", height: "3px",
-        background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden",
-      }}>
-        <motion.div
-          style={{
-            height: "100%", borderRadius: "2px",
-            background: isAlignedNow ? "var(--gold)" : "#8060d0",
-          }}
-          animate={{ width: `${Math.round(tick.windowPct * 100)}%` }}
-          transition={{ duration: 0.1 }}
-        />
-      </div>
+      {/* Imminence bar (hidden at higher difficulty) */}
+      {showImminenceBar && (
+        <div style={{
+          width: "160px", height: "3px",
+          background: "rgba(255,255,255,0.06)", borderRadius: "2px", overflow: "hidden",
+        }}>
+          <motion.div
+            style={{
+              height: "100%", borderRadius: "2px",
+              background: isAlignedNow ? "var(--gold)" : "#8060d0",
+            }}
+            animate={{ width: `${Math.round(tick.windowPct * 100)}%` }}
+            transition={{ duration: 0.1 }}
+          />
+        </div>
+      )}
 
       {/* Status */}
       <p className="font-cormorant" style={{
@@ -237,14 +285,22 @@ export default function Mechanism1({ onSolved, disabled }: Props) {
         {statusMsg}
       </p>
 
-      {/* Hint */}
-      <p className="font-cinzel" style={{
-        fontSize: "8px", letterSpacing: "2px",
-        color: "var(--muted)", opacity: 0.4, textTransform: "uppercase",
-        textAlign: "center",
-      }}>
-        le corps se dissout quand les trois courants s'unissent
-      </p>
+      {/* Difficulty hint (disappears as you progress) */}
+      {showHint && (
+        <p className="font-cinzel" style={{
+          fontSize: "8px", letterSpacing: "2px",
+          color: "var(--muted)",
+          opacity: Math.max(0.15, 0.4 - hits * 0.04),
+          textTransform: "uppercase", textAlign: "center",
+          transition: "opacity 0.8s",
+        }}>
+          {hits < 3
+            ? "le corps se dissout quand les trois courants s'unissent"
+            : hits < 5
+            ? "sens le rythme"
+            : "…"}
+        </p>
+      )}
     </div>
   )
 }
