@@ -72,28 +72,38 @@ function genSymbols(n: number, sizeBonus: number): SymData[] {
 }
 
 // ── Floating symbol ───────────────────────────────────────────────────────────
-function FloatSym({ data, onClick, disabled, flash, distort }: {
+function FloatSym({ data, onClick, disabled, flash, distort, hideHighlight }: {
   data: SymData
   onClick: (id: number, isTrue: boolean) => void
   disabled: boolean
   flash: "correct" | "wrong" | null
-  distort: number   // true-kanji distortion scale for current difficulty
+  distort: number      // true-kanji turbulence scale
+  hideHighlight: boolean  // when true: true kanji gets no visual advantage
 }) {
   const filterId  = useId().replace(/:/g, "")
   const turbFreq  = data.isTrue ? 0.01 + distort * 0.003 : 0.04 + data.turbFreq * 0.03
   const turbScale = data.isTrue ? distort : 12 + data.turbFreq * 8
-  const baseColor = data.isTrue ? "rgba(200,169,110,0.85)" : "rgba(106,96,80,0.55)"
+
+  // When hideHighlight: true kanji looks identical to illusions
+  const showGold  = data.isTrue && !hideHighlight
+  const baseColor = showGold ? "rgba(200,169,110,0.85)" : "rgba(106,96,80,0.55)"
   const fillColor = flash === "correct" ? "rgba(200,169,110,1)"
     : flash === "wrong"   ? "rgba(200,60,60,0.9)"
     : baseColor
-  const strokeC   = data.isTrue
+  const strokeC = showGold
     ? `rgba(200,169,110,${flash === "correct" ? 1 : 0.4})`
     : `rgba(106,96,80,${flash === "wrong" ? 0.8 : 0.15})`
+  const circleOpacity = flash ? 0.9 : showGold ? 0.5 : 0.2
+  const strokeWidth   = showGold ? 1.5 : 0.8
+  const glowFilter    = flash === "correct" ? "drop-shadow(0 0 6px rgba(200,169,110,0.9))"
+    : flash === "wrong" ? "drop-shadow(0 0 8px rgba(200,60,60,0.8))"
+    : showGold ? "drop-shadow(0 0 3px rgba(200,169,110,0.3))"
+    : "none"
 
   return (
     <motion.div
       style={{ position: "absolute", cursor: disabled ? "default" : "pointer",
-        userSelect: "none", zIndex: data.isTrue ? 2 : 1 }}
+        userSelect: "none", zIndex: data.isTrue && !hideHighlight ? 2 : 1 }}
       animate={{
         x: [0, data.vx * 50, -data.vx * 35, data.vx * 25, 0],
         y: [0, -data.vy * 40, data.vy * 30, -data.vy * 15, 0],
@@ -114,16 +124,9 @@ function FloatSym({ data, onClick, disabled, flash, distort }: {
         </defs>
         <g filter={`url(#${filterId})`}>
           <circle cx="30" cy="30" r="25" fill="none" stroke={strokeC}
-            strokeWidth={data.isTrue ? 1.5 : 0.8}
-            opacity={flash ? 0.9 : data.isTrue ? 0.5 : 0.2} />
+            strokeWidth={strokeWidth} opacity={circleOpacity} />
           <text x="30" y="42" textAnchor="middle" fontSize="34" fontFamily="serif" fill={fillColor}
-            style={{
-              filter: flash === "correct" ? "drop-shadow(0 0 6px rgba(200,169,110,0.9))"
-                : flash === "wrong" ? "drop-shadow(0 0 8px rgba(200,60,60,0.8))"
-                : data.isTrue ? "drop-shadow(0 0 3px rgba(200,169,110,0.3))"
-                : "none",
-              transition: "fill 0.2s",
-            }}>
+            style={{ filter: glowFilter, transition: "fill 0.2s" }}>
             {data.kanji}
           </text>
         </g>
@@ -306,8 +309,9 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
     ? `${hits} / ${REQUIRED}`
     : "Trouve le vrai symbole parmi les illusions."
 
-  const distort = trueDistortScale(hits)
-  const baseMistOp = mistBaseOpacity(hits)
+  const distort       = trueDistortScale(hits)
+  const baseMistOp    = mistBaseOpacity(hits)
+  const hideHighlight = hits >= 4   // last 2 rounds: no gold highlight on true kanji
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", width: "100%" }}>
@@ -368,6 +372,7 @@ export default function Mechanism2({ onSolved, disabled }: Props) {
               disabled={disabled || solved}
               flash={flash?.id === sym.id ? flash.type : null}
               distort={distort}
+              hideHighlight={hideHighlight}
             />
           </div>
         ))}
