@@ -234,6 +234,47 @@ function EnigmaPanel({ index, solved, onSolved, onClose }: EnigmaPanelProps) {
   )
 }
 
+// ── Mute button ───────────────────────────────────────────────────────────────
+function MuteButton({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={muted ? "Activer le son" : "Couper le son"}
+      style={{
+        position: "fixed", top: "14px", right: "16px", zIndex: 300,
+        width: "34px", height: "34px", borderRadius: "50%",
+        background: "rgba(10,14,22,0.80)",
+        border: "1px solid rgba(200,169,110,0.20)",
+        backdropFilter: "blur(6px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", outline: "none",
+        transition: "border-color 0.2s, background 0.2s",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(200,169,110,0.55)")}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(200,169,110,0.20)")}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        {/* Speaker body */}
+        <path d="M2 5.5 H5 L9 2 V14 L5 10.5 H2 Z"
+          fill="rgba(200,169,110,0.70)" />
+        {muted ? (
+          /* Muted: cross lines */
+          <>
+            <line x1="11" y1="5" x2="15" y2="11" stroke="rgba(200,169,110,0.70)" strokeWidth="1.6" strokeLinecap="round" />
+            <line x1="15" y1="5" x2="11" y2="11" stroke="rgba(200,169,110,0.70)" strokeWidth="1.6" strokeLinecap="round" />
+          </>
+        ) : (
+          /* Unmuted: two sound arcs */
+          <>
+            <path d="M11 5.5 Q13 8 11 10.5" stroke="rgba(200,169,110,0.70)" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <path d="M12.5 3.5 Q15.5 8 12.5 12.5" stroke="rgba(200,169,110,0.45)" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+          </>
+        )}
+      </svg>
+    </button>
+  )
+}
+
 // ── Home ──────────────────────────────────────────────────────────────────────
 const LOCK_DATA: { label: string; sub: string; desc: string }[] = [
   {
@@ -260,6 +301,7 @@ export default function Home() {
   const [activeEnigma, setActiveEnigma] = useState<0 | 1 | 2 | null>(null)
   const [isOpening, setIsOpening]       = useState(false)
   const [showOpening, setShowOpening]   = useState(false)
+  const [muted, setMuted]               = useState(false)
 
   // Audio refs
   const audioRef       = useRef<HTMLAudioElement | null>(null)
@@ -366,11 +408,20 @@ export default function Home() {
     router.push("/carnet")
   }, [router])
 
+  const toggleMute = useCallback(() => {
+    setMuted(m => {
+      const next = !m
+      if (audioRef.current) audioRef.current.muted = next
+      return next
+    })
+  }, [])
+
   const allSolved = solved.every(Boolean)
 
   return (
     <MusicContext.Provider value={musicCtx}>
       <>
+        <MuteButton muted={muted} onToggle={toggleMute} />
         <AnimatePresence>
           {showOpening && (
             <OpeningSequence onComplete={handleOpeningComplete} />
