@@ -1,5 +1,5 @@
 export type Role = "tank" | "warrior" | "assassin" | "mage" | "support" | "scout"
-export type Clan = "hozuki" | "karatachi" | "hoshigaki" | "yokushin" | "pavillonNoir" | "kama"
+export type Clan = "hozuki" | "karatachi" | "hoshigaki" | "yokushin" | "pavillonNoir" | "kama" | "neutre"
 export type Tier = 1 | 2 | 3
 export type AbilityType = "damage_single" | "damage_all" | "heal_ally" | "heal_self" | "buff_def"
 export type SynergyEffectType =
