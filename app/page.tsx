@@ -234,6 +234,135 @@ function EnigmaPanel({ index, solved, onSolved, onClose }: EnigmaPanelProps) {
   )
 }
 
+// ── Atmospheric intro (before coffre) ────────────────────────────────────────
+const INTRO_WORDS = "Trois sceaux protègent ce que je ne pouvais confier qu'à toi.".split(" ")
+
+function AtmosphericIntro({ onComplete }: { onComplete: () => void }) {
+  const [count, setCount] = useState(0)
+
+  // Reveal one word every 160ms
+  useEffect(() => {
+    if (count >= INTRO_WORDS.length) return
+    const id = setTimeout(() => setCount(c => c + 1), 160)
+    return () => clearTimeout(id)
+  }, [count])
+
+  // Accept any click or keypress after 1.2 s (prevents accidental skip)
+  useEffect(() => {
+    let cleanup: (() => void) | undefined
+    const arm = setTimeout(() => {
+      const handle = () => onComplete()
+      window.addEventListener("pointerdown", handle)
+      window.addEventListener("keydown", handle)
+      cleanup = () => {
+        window.removeEventListener("pointerdown", handle)
+        window.removeEventListener("keydown", handle)
+      }
+    }, 1200)
+    return () => { clearTimeout(arm); cleanup?.() }
+  }, [onComplete])
+
+  return (
+    <motion.div
+      key="intro"
+      style={{
+        position: "fixed", inset: 0, zIndex: 10,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "var(--bg)",
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.4 }}
+    >
+      <WaterParticles />
+
+      <div aria-hidden style={{
+        position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, opacity: 0.35,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")`,
+      }} />
+
+      <p
+        className="font-cormorant"
+        style={{
+          position: "relative", zIndex: 1,
+          fontSize: "clamp(18px, 3vw, 26px)", fontStyle: "italic",
+          color: "var(--muted)", lineHeight: 1.9,
+          textAlign: "center", padding: "0 48px", maxWidth: "620px",
+        }}
+      >
+        {INTRO_WORDS.map((word, i) => (
+          <span key={i} style={{
+            display: "inline-block", marginRight: "0.28em",
+            opacity: i < count ? 1 : 0,
+            transition: "opacity 0.5s ease",
+          }}>
+            {word}
+          </span>
+        ))}
+      </p>
+    </motion.div>
+  )
+}
+
+// ── Jagetsu message (between opening and carnet) ──────────────────────────────
+const JAGETSU_WORDS =
+  "Ce carnet est ma mémoire, et désormais la tienne. Prends-en soin. — Jagetsu Hōzuki"
+    .split(" ")
+
+function JagetsuMessage({ onComplete }: { onComplete: () => void }) {
+  const [count, setCount] = useState(0)
+  const done = count >= JAGETSU_WORDS.length
+
+  // Reveal one word every 280ms
+  useEffect(() => {
+    if (done) return
+    const id = setTimeout(() => setCount(c => c + 1), 280)
+    return () => clearTimeout(id)
+  }, [count, done])
+
+  // Auto-advance 2.5 s after last word
+  useEffect(() => {
+    if (!done) return
+    const id = setTimeout(() => onComplete(), 2500)
+    return () => clearTimeout(id)
+  }, [done, onComplete])
+
+  return (
+    <motion.div
+      key="jagetsu"
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "#000",
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.6 }}
+    >
+      <p
+        className="font-cormorant"
+        style={{
+          fontSize: "clamp(16px, 2.5vw, 21px)", fontStyle: "italic",
+          color: "rgba(200,169,110,0.82)", lineHeight: 2.1,
+          textAlign: "center", padding: "0 52px", maxWidth: "560px",
+        }}
+      >
+        {JAGETSU_WORDS.map((word, i) => (
+          <span key={i} style={{
+            display: "inline-block", marginRight: "0.28em",
+            opacity: i < count ? 1 : 0,
+            transition: "opacity 0.7s ease",
+          }}>
+            {word}
+          </span>
+        ))}
+      </p>
+    </motion.div>
+  )
+}
+
 // ── Mute button ───────────────────────────────────────────────────────────────
 function MuteButton({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   return (
@@ -302,6 +431,8 @@ export default function Home() {
   const [isOpening, setIsOpening]       = useState(false)
   const [showOpening, setShowOpening]   = useState(false)
   const [muted, setMuted]               = useState(false)
+  const [introSeen, setIntroSeen]       = useState(false)
+  const [showJagetsu, setShowJagetsu]   = useState(false)
 
   // Audio refs
   const audioRef       = useRef<HTMLAudioElement | null>(null)
@@ -405,8 +536,8 @@ export default function Home() {
     if (typeof window !== "undefined") {
       sessionStorage.setItem("tengetsu-unlocked", "1")
     }
-    router.push("/carnet")
-  }, [router])
+    setShowJagetsu(true)
+  }, [])
 
   const toggleMute = useCallback(() => {
     setMuted(m => {
@@ -418,26 +549,51 @@ export default function Home() {
 
   const allSolved = solved.every(Boolean)
 
+  // Phase drives the entire view stack
+  const phase = showJagetsu ? "jagetsu"
+    : showOpening ? "opening"
+    : !introSeen ? "intro"
+    : "coffre"
+
   return (
     <MusicContext.Provider value={musicCtx}>
       <>
         <MuteButton muted={muted} onToggle={toggleMute} />
-        <AnimatePresence>
-          {showOpening && (
-            <OpeningSequence onComplete={handleOpeningComplete} />
-          )}
-        </AnimatePresence>
 
-        <AnimatePresence>
-          {!showOpening && (
+        <AnimatePresence mode="wait">
+
+          {/* ── 1. Atmospheric intro ── */}
+          {phase === "intro" && (
+            <AtmosphericIntro key="intro" onComplete={() => setIntroSeen(true)} />
+          )}
+
+          {/* ── 2. Opening animation ── */}
+          {phase === "opening" && (
+            <motion.div key="opening" style={{ position: "fixed", inset: 0, zIndex: 100 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}>
+              <OpeningSequence onComplete={handleOpeningComplete} />
+            </motion.div>
+          )}
+
+          {/* ── 3. Jagetsu phrase ── */}
+          {phase === "jagetsu" && (
+            <JagetsuMessage key="jagetsu" onComplete={() => router.push("/carnet")} />
+          )}
+
+          {/* ── 4. Coffre puzzle ── */}
+          {phase === "coffre" && (
             <motion.div
+              key="coffre"
               style={{
                 position: "relative", minHeight: "100svh",
                 display: "flex", flexDirection: "column", alignItems: "center",
                 background: "var(--bg)",
               }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.6 }}
             >
               <WaterParticles />
 
@@ -547,7 +703,7 @@ export default function Home() {
 
               {/* ── Full-screen enigma panels ── */}
               <AnimatePresence>
-                {activeEnigma !== null && !showOpening && (
+                {activeEnigma !== null && (
                   <EnigmaPanel
                     key={activeEnigma}
                     index={activeEnigma}
@@ -559,6 +715,7 @@ export default function Home() {
               </AnimatePresence>
             </motion.div>
           )}
+
         </AnimatePresence>
       </>
     </MusicContext.Provider>
