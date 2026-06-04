@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import type { Unit, GamePhase, ActiveSynergy, SlotPos, CombatLog } from "@/types/enigme3"
+import type { Unit, GamePhase, ActiveSynergy, SlotPos, RoundResult } from "@/types/enigme3"
 import {
   ROSTER, getActiveSynergies, getRandomUnits,
   CLAN_LABELS, CLAN_COLORS, ROLE_LABELS,
@@ -10,6 +10,7 @@ import {
 import { simulateCombat } from "@/lib/enigme3/combat"
 import { getEnemyTeam, ROUND_NAMES, ROUND_FLAVORS } from "@/lib/enigme3/adversary"
 import { useAudio } from "@/lib/useAudio"
+import CombatView from "@/components/enigme3/CombatView"
 
 const TEAM_MAX = 4
 const WINS_NEEDED = 3
@@ -165,43 +166,6 @@ function SynergyPanel({ synergies }: { synergies: ActiveSynergy[] }) {
   )
 }
 
-// ─── COMBAT LOG ───────────────────────────────────────────────────────────────
-
-function CombatLogView({ log, visible }: { log: CombatLog[]; visible: number }) {
-  const endRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }) }, [visible])
-
-  const kindColors: Record<string, string> = {
-    attack: "var(--text)", ability: "var(--gold)", heal: "#60c878",
-    death: "#c05050", system: "var(--muted)", synergy: "#9060d0",
-  }
-  return (
-    <div style={{
-      height: "240px", overflowY: "auto", background: "rgba(0,0,0,0.50)",
-      borderRadius: "8px", padding: "12px 14px",
-      border: "1px solid rgba(255,255,255,0.07)",
-    }}>
-      {log.slice(0, visible).map((entry, i) => (
-        <motion.p key={i}
-          initial={{ opacity: 0, x: -6 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.2 }}
-          style={{
-            fontSize: "11px", color: kindColors[entry.kind] || "var(--text)",
-            marginBottom: "5px", lineHeight: 1.5,
-          }}
-        >
-          {entry.turn > 0 && (
-            <span style={{ color: "rgba(255,255,255,0.20)", marginRight: "5px", fontSize: "9px" }}>T{entry.turn}</span>
-          )}
-          {entry.text}
-        </motion.p>
-      ))}
-      <div ref={endRef} />
-    </div>
-  )
-}
-
 // ─── ROUND TRACKER ────────────────────────────────────────────────────────────
 
 function RoundTracker({ round, wins, losses }: { round: number; wins: number; losses: number }) {
@@ -261,26 +225,11 @@ export default function Mechanism3({ onSolved, disabled }: Props) {
   const [picked, setPicked]         = useState<Unit[]>([])
   const [swapIn, setSwapIn]         = useState<Unit | null>(null)
   const [placement, setPlacement]   = useState<Record<string, SlotPos>>({})
-  const [combatLog, setCombatLog]   = useState<CombatLog[]>([])
-  const [logVisible, setLogVisible] = useState(0)
+  const [roundResult, setRoundResult] = useState<RoundResult | null>(null)
   const [roundWon, setRoundWon]     = useState(false)
 
   const isSwapPhase = phase === "draft" && team.length >= TEAM_MAX
   const teamSynergy = getActiveSynergies(team)
-
-  // ── Animate combat log ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (phase !== "combat") return
-    if (logVisible >= combatLog.length) {
-      setTimeout(() => {
-        setPhase("round_result")
-        if (roundWon) play("align"); else play("fail")
-      }, 700)
-      return
-    }
-    const t = setTimeout(() => setLogVisible(v => v + 1), 310)
-    return () => clearTimeout(t)
-  }, [phase, logVisible, combatLog.length, roundWon, play])
 
   const generateOffers = useCallback((currentTeam: Unit[]) => {
     setOffered(getRandomUnits(ROSTER, currentTeam, 4))
@@ -347,9 +296,7 @@ export default function Mechanism3({ onSolved, disabled }: Props) {
     const enemyTeam = getEnemyTeam(round)
     const playerUnits = team.map(u => ({ unit: u, slot: (placement[u.id] || "front") as SlotPos }))
     const result = simulateCombat(playerUnits, enemyTeam, getActiveSynergies(team))
-    setCombatLog(result.log)
-    setLogVisible(0)
-    setRoundWon(result.winner === "player")
+    setRoundResult(result)
     setPhase("combat")
   }
 
@@ -599,53 +546,21 @@ export default function Mechanism3({ onSolved, disabled }: Props) {
         )}
 
         {/* ── COMBAT ─────────────────────────────────────────────────────────── */}
-        {phase === "combat" && (
+        {phase === "combat" && roundResult && (
           <motion.div key="combat"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", width: "100%" }}
+            style={{ width: "100%", maxWidth: "700px" }}
           >
-            <p className="font-cinzel" style={{ fontSize: "9px", color: "#c05050", letterSpacing: "3px", textTransform: "uppercase" }}>
-              Combat en cours…
-            </p>
-
-            {/* Team vs Enemy */}
-            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
-              <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", justifyContent: "center" }}>
-                {team.map(u => (
-                  <div key={u.id} style={{
-                    background: "rgba(96,200,120,0.08)", border: "1px solid rgba(96,200,120,0.25)",
-                    borderRadius: "5px", padding: "4px 8px",
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
-                  }}>
-                    <span style={{ fontSize: "14px" }}>{u.kanji}</span>
-                    <span style={{ fontSize: "7px", color: "#60c878" }}>{u.name.split(" ")[0]}</span>
-                  </div>
-                ))}
-              </div>
-              <span style={{ color: "var(--muted)", fontSize: "16px" }}>⚔</span>
-              <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", justifyContent: "center" }}>
-                {getEnemyTeam(round).map(e => (
-                  <div key={e.unit.id} style={{
-                    background: "rgba(192,80,80,0.08)", border: "1px solid rgba(192,80,80,0.25)",
-                    borderRadius: "5px", padding: "4px 8px",
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
-                  }}>
-                    <span style={{ fontSize: "14px" }}>{e.unit.kanji}</span>
-                    <span style={{ fontSize: "7px", color: "#c05050" }}>{e.unit.name.split(" ")[0]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <CombatLogView log={combatLog} visible={logVisible} />
-
-            <p style={{ fontSize: "10px", color: "var(--muted)", fontStyle: "italic" }}>
-              {logVisible < combatLog.length
-                ? `Tour ${combatLog[logVisible]?.turn || "…"}`
-                : "Calcul du résultat…"
-              }
-            </p>
+            <CombatView
+              actions={roundResult.actions}
+              initialPieces={roundResult.initialPieces}
+              onCombatEnd={(playerWon) => {
+                setRoundWon(playerWon)
+                setPhase("round_result")
+                if (playerWon) play("align"); else play("fail")
+              }}
+            />
           </motion.div>
         )}
 

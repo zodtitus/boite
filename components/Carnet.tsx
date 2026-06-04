@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import NarrationView from "./NarrationView"
 import { narrations } from "@/data/narrations"
@@ -9,7 +9,9 @@ import { narrations } from "@/data/narrations"
 type Tab = "carnet" | "cartographie"
 
 export default function Carnet() {
-  const [tab, setTab] = useState<Tab>("carnet")
+  const searchParams = useSearchParams()
+  const initialTab = searchParams.get("tab") === "cartographie" ? "cartographie" : "carnet"
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [currentId, setCurrentId] = useState(1)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const router = useRouter()
